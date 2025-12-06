@@ -135,4 +135,3 @@ export const canonicalPayloadHash = (payload: CanonicalPayload): string => {
   return fingerprintPayload(payload);
 };
 
-export type { CanonicalPayloadInput };

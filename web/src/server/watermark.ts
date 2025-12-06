@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
-import sharp from 'sharp';
+import sharp, { type OverlayOptions } from 'sharp';
 
 const WATERMARK_ASSET_PATH = path.join(
   process.cwd(),
@@ -67,16 +67,16 @@ export const applyIdentikWatermark = async (buffer: Buffer): Promise<Buffer> => 
     );
     const overlay = await getSizedOverlay(overlayWidth);
 
+    const overlayOptions = {
+      input: overlay,
+      top: margin,
+      left: margin,
+      blend: 'over',
+      opacity: WATERMARK_LAYOUT.opacity
+    } as const;
+
     return await sharp(buffer)
-      .composite([
-        {
-          input: overlay,
-          top: margin,
-          left: margin,
-          blend: 'over',
-          opacity: WATERMARK_LAYOUT.opacity
-        }
-      ])
+      .composite([overlayOptions as unknown as OverlayOptions])
       .toBuffer();
   } catch (error) {
     console.error('[watermark] Failed to apply watermark', error);

@@ -191,7 +191,10 @@ export const embedIdentikMetadata = async (
     await withExifTool(async (tool) => {
       logExifToolState('write_start', tool, { tempFile: tempFileLabel });
       const writeStart = Date.now();
-      await tool.write(filePath, { [IDENTIK_EXIF_TAG]: JSON.stringify(payload) }, ['-overwrite_original']);
+      const tags = {
+        [IDENTIK_EXIF_TAG]: JSON.stringify(payload)
+      } satisfies Record<string, string>;
+      await tool.write(filePath, tags as unknown as Record<string, string>, ['-overwrite_original']);
       logExifToolState('write_finish', tool, {
         tempFile: tempFileLabel,
         durationMs: Date.now() - writeStart

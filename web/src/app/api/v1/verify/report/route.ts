@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   await db.insert(schema.domainEvents).values({
     domainId: domain.id,
     eventType: REPORT_EVENT_TYPE,
-    weight: -1,
+    weight: '-1',
     metadata: {
       mediaId,
       payloadHash: body.payload_hash,

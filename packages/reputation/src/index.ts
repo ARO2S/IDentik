@@ -103,7 +103,7 @@ export const updateDomainReputation = async (domainId: string): Promise<Reputati
 
   await db
     .update(schema.domains)
-    .set({ reputationScore: details.score })
+    .set({ reputationScore: details.score.toString() })
     .where(eq(schema.domains.id, domainId));
 
   return details;

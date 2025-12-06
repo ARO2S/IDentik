@@ -17,12 +17,16 @@ export async function POST(request: NextRequest) {
     return unauthorized();
   }
 
+  if (!user.email) {
+    return badRequest('We need an email address on file before purchasing a name.');
+  }
+
   await db
     .insert(schema.users)
     .values({
       id: user.id,
-      email: user.email ?? null,
-      displayName: user.email ?? undefined
+      email: user.email,
+      displayName: user.email
     })
     .onConflictDoNothing({ target: schema.users.id });
 

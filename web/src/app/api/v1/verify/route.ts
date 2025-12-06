@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
   await db.insert(schema.verificationLogs).values({
     mediaId: media?.id ?? null,
     verified,
-    score,
+    score: score.toString(),
     report: {
       identik_name: identikName,
       checks,
@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
   await db.insert(schema.domainEvents).values({
     domainId: domain.id,
     eventType: verified ? 'verification_pass' : 'verification_fail',
-    weight: verified ? 0.5 : -0.5,
+    weight: verified ? '0.5' : '-0.5',
     metadata: {
       mediaId: media?.id ?? null,
       warnings,
