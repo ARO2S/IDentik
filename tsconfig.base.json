@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "moduleDetection": "force",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@identik/crypto-utils": ["packages/crypto-utils/src"],
+      "@identik/reputation": ["packages/reputation/src"],
+      "@identik/api-client": ["packages/api-client/src"],
+      "@identik/database": ["packages/database/src"],
+      "@identik/database/*": ["packages/database/src/*"]
+    }
+  }
+}

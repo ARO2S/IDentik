@@ -1,0 +1,150 @@
+
+---
+
+## 2️⃣ `.cursorrules` (updated for Identik & non-technical UX)
+
+```text
+# Project Identity
+- Project name: Identik.
+- Goal: Make it extremely easy for non-technical users (including older, tech-challenged people) to:
+  1) Get an Identik Name (e.g. jenny.identik),
+  2) Protect a photo with that Identik Name,
+  3) Check if a photo is protected and by whom.
+
+# Terminology & UX Rules
+- In all UI, call the central identity a **"Identik Name"**, not "domain".
+- Avoid technical terms like "keys", "cryptographic signatures", "payload hashes", "EXIF", or "metadata" in user-facing copy.
+  - Instead say things like:
+    - "Protect this photo"
+    - "Check this photo"
+    - "Trust level"
+    - "History"
+- Provide simple labels for trust:
+  - "Trusted"
+  - "Limited history"
+  - "Warning"
+  - "Not protected"
+- All flows should be simple, with one main action per page.
+
+# Technical Model (Internal)
+- Under the hood, keep the data model as:
+  - users
+  - domains (these are Identik Names)
+  - domain_public_keys
+  - media_records
+  - signatures
+  - verification_logs
+  - domain_events
+- Identity is tied to domains, but this is not exposed to end-users.
+- Implement canonical payload, signing, and verification as specified in the master prompt.
+
+# Stateless Media Handling
+- Do not use S3 or any external object storage for media in this MVP.
+- Files are:
+  - Uploaded to /api/v1/sign or /api/v1/verify as multipart/form-data.
+  - Processed in memory or with temporary disk files.
+  - Discarded when the request completes.
+- Persist only:
+  - file_sha256
+  - canonical payload fingerprint
+  - signature data
+  - domain (Identik Name) and reputation info
+  - verification logs
+
+# Crypto & Canonical Payload
+- Use @noble/ed25519 for Ed25519 signing and verification.
+- Implement a canonical payload with:
+  - version
+  - identik_name
+  - file_sha256
+  - metadata (keys sorted lexicographically)
+  - timestamp
+- Implement shared helpers in /packages/crypto-utils:
+  - sha256Hex
+  - fingerprintPublicKey
+  - signPayload
+  - verifyPayload
+- Write tests to ensure:
+  - Sign/verify round-trips.
+  - Canonical payload is deterministic.
+
+# Reputation Logic
+- Implement a reputation engine in /packages/reputation:
+  - calculateDomainReputation(domainId) → 0–1 numeric.
+  - updateDomainReputation(domainId) → update domains.reputation_score.
+- Domain events and weights:
+  - "media_signed" → positive.
+  - "verification_pass" → positive.
+  - "verification_fail" → negative.
+  - "abuse_report" → more negative.
+- Expose an endpoint /api/v1/names/:name/reputation with:
+  - identik_name
+  - reputation_score
+  - human-readable label and explanation for non-technical users.
+
+# API Patterns
+- Use REST-style endpoints:
+  - /api/v1/names/available
+  - /api/v1/names/purchase
+  - /api/v1/names/:name/reputation
+  - /api/v1/sign
+  - /api/v1/verify
+  - /api/v1/domains/:domainId/keys
+  - /api/v1/domain-keys/:id/revoke
+- Add a shared API client in /packages/api-client and use it from /web and /mobile.
+
+# Code Style & Tooling
+- Use TypeScript with "strict": true.
+- Use ESLint and Prettier.
+- Prefer React functional components and hooks.
+- Avoid inline secrets and hard-coded credentials.
+- Add tests for:
+  - Crypto utilities.
+  - Canonical payload generation.
+  - EXIF/XMP handling.
+  - Reputation.
+  - Sign/verify flows.
+- Add a GitHub Actions CI to run:
+  - npm run lint
+  - npm test
+  - npm run build (for /web)
+
+# Auth & Secrets
+- Use Supabase Auth or similar for user login (email + password is enough).
+- Secrets must come from environment variables (e.g., DB credentials, dev signing key).
+- Never log private keys.
+
+# Mobile App Rules
+- The mobile app in /mobile should:
+  - Use the same auth backend.
+  - Use the shared API client.
+  - Provide:
+    - Login / onboarding.
+    - "My Identik Name(s)" screen.
+    - "Protect a photo" screen.
+    - "Check a photo" screen.
+- UI must be simple and friendly; follow the same wording as web where possible.
+
+# Migrations & DB
+- Use a clear migration strategy (Prisma, Drizzle, or SQL files).
+- Expose npm scripts for:
+  - npm run db:migrate
+  - npm run db:seed
+- Do not change schema without a migration.
+
+# Development Workflow Expectations
+- After adding major features:
+  - Add corresponding tests.
+  - Run tests and fix failing ones.
+  - Run npm run lint and fix lint issues.
+  - Run npm run build in /web and fix build issues.
+- Ensure README is kept up to date with how to run the app locally.
+
+# UX Copy Guidelines
+- Always explain results in plain language.
+- For verification results, include both:
+  - A short label (Trusted / Caution / Not protected)
+  - A one-sentence explanation:
+    - Eg: "This photo was signed by jenny.identik and looks authentic based on our checks."
+    - Eg: "We found an Identik stamp from jenny.identik, but this name is new and we don’t have much history yet."
+    - Eg: "We couldn’t find an Identik stamp on this photo."

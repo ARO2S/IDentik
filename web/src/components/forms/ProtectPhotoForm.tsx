@@ -1,0 +1,161 @@
+'use client';
+
+import { useRef, useState } from 'react';
+import { useSessionContext } from '@supabase/auth-helpers-react';
+
+const statusToClass = (status: 'success' | 'error' | 'info') => {
+  if (status === 'success') return 'status-banner status-success';
+  if (status === 'error') return 'status-banner status-danger';
+  return 'status-banner status-caution';
+};
+
+const getFileNameFromContentDisposition = (headerValue: string | null): string | null => {
+  if (!headerValue) return null;
+
+  const filenameStarMatch = headerValue.match(/filename\*=([^']*)''([^;]+)/i);
+  if (filenameStarMatch?.[2]) {
+    try {
+      return decodeURIComponent(filenameStarMatch[2]);
+    } catch {
+      return filenameStarMatch[2];
+    }
+  }
+
+  const quotedFilenameMatch = headerValue.match(/filename="([^"]+)"/i);
+  if (quotedFilenameMatch?.[1]) {
+    return quotedFilenameMatch[1];
+  }
+
+  const fallbackMatch = headerValue.match(/filename=([^;]+)/i);
+  if (fallbackMatch?.[1]) {
+    const value = fallbackMatch[1].trim().replace(/^['"]|['"]$/g, '');
+    return value || null;
+  }
+
+  return null;
+};
+
+export const ProtectPhotoForm = () => {
+  const { session } = useSessionContext();
+  const formRef = useRef<HTMLFormElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [status, setStatus] = useState<{ kind: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [includeWatermark, setIncludeWatermark] = useState(true);
+
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = formRef.current;
+    if (!form) return;
+
+    const formData = new FormData(form);
+    const identikName = formData.get('identikName')?.toString().trim();
+    const file = fileInputRef.current?.files?.[0];
+
+    if (!identikName) {
+      setStatus({ kind: 'error', message: 'Please enter your Identik Name.' });
+      return;
+    }
+
+    if (!file) {
+      setStatus({ kind: 'error', message: 'Please choose the photo you want to protect.' });
+      return;
+    }
+
+    if (!session?.access_token) {
+      setStatus({ kind: 'error', message: 'Please sign in before protecting a photo.' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+
+    try {
+      formData.set('identikName', identikName);
+      formData.set('watermark', includeWatermark ? 'true' : 'false');
+      const response = await fetch('/api/v1/sign', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unable to protect that photo right now.' }));
+        throw new Error(error?.error ?? 'Unable to protect that photo right now.');
+      }
+
+      const contentDisposition = response.headers.get('content-disposition');
+      const downloadFileName = getFileNameFromContentDisposition(contentDisposition);
+      const summaryHeader = response.headers.get('x-identik-summary');
+      const summary = summaryHeader ? JSON.parse(summaryHeader) : null;
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download =
+        downloadFileName ??
+        (summary?.identik_name ? `protected-${summary.identik_name}.jpg` : `protected-${Date.now()}.jpg`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+
+      setStatus({
+        kind: 'success',
+        message: summary
+          ? `All set! This photo is now protected under ${summary.identik_name}. ${
+              summary.watermark_applied
+                ? 'We added the subtle Identik watermark to your download.'
+                : 'This download keeps the original pixels untouched.'
+            }`
+          : 'All set! This photo is now protected.'
+      });
+      form.reset();
+    } catch (error) {
+      setStatus({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'We could not protect that photo right now.'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form ref={formRef} onSubmit={onSubmit} aria-label="Protect a photo">
+      <div>
+        <label htmlFor="protect-identik-name">Your Identik Name</label>
+        <input id="protect-identik-name" name="identikName" type="text" placeholder="jenny.identik" />
+      </div>
+      <div>
+        <label htmlFor="protect-file">Photo to protect</label>
+        <input id="protect-file" name="file" type="file" accept="image/*" ref={fileInputRef} />
+      </div>
+      <div className="watermark-toggle">
+        <label htmlFor="protect-watermark" className="checkbox-row">
+          <input
+            id="protect-watermark"
+            name="watermark"
+            type="checkbox"
+            checked={includeWatermark}
+            onChange={(event) => setIncludeWatermark(event.target.checked)}
+          />
+          <span>Add the Identik shield watermark to this download</span>
+        </label>
+        <p className="form-helper">
+          Uncheck if you prefer the untouched photo. You can always rerun protect to grab the other version.
+        </p>
+      </div>
+      <button type="submit" className="primary-btn" disabled={isSubmitting}>
+        {isSubmitting ? 'Protecting…' : 'Protect this photo'}
+      </button>
+      {status && (
+        <div className={statusToClass(status.kind)} role="status">
+          {status.message}
+        </div>
+      )}
+    </form>
+  );
+};
+
+export default ProtectPhotoForm;
