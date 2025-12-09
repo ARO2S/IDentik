@@ -3,7 +3,12 @@ import { getAuthenticatedUser } from '@/server/auth';
 import { badRequest, forbidden, serverError, unauthorized } from '@/server/http';
 import { normalizeIdentikName, parseLabelFromName } from '@/server/names';
 import { appendSuffixToFileName, fileToBuffer, getSafeFileName } from '@/server/files';
-import { embedIdentikMetadata, type IdentikEmbeddedMetadata, type IdentikStamp } from '@/server/metadata';
+import {
+  embedIdentikMetadata,
+  type EmbedResult,
+  type IdentikEmbeddedMetadata,
+  type IdentikStamp
+} from '@/server/metadata';
 import { applyIdentikWatermark } from '@/server/watermark';
 import {
   canonicalPayloadHash,
@@ -199,9 +204,10 @@ export async function POST(request: NextRequest) {
   };
 
   const embedStart = performance.now();
-  let signedBuffer: Buffer;
+  let signedBuffer: Buffer = workingBuffer;
+  let embedResult: EmbedResult = { buffer: workingBuffer, embedded: false, skippedReason: 'not_attempted' };
   try {
-    signedBuffer = await withTimeout(
+    embedResult = await withTimeout(
       embedIdentikMetadata(workingBuffer, embedded),
       EMBED_TIMEOUT_MS,
       () => {
@@ -210,14 +216,13 @@ export async function POST(request: NextRequest) {
         return error;
       }
     );
+    signedBuffer = embedResult.buffer;
+    logSignDebug('embed_complete', { durationMs: Math.round(performance.now() - embedStart) });
   } catch (error) {
-    console.error('[api/v1/sign] embedIdentikMetadata failed', error);
-    if (error instanceof Error && error.name === EMBED_TIMEOUT_ERROR_NAME) {
-      return serverError('We could not finish protecting that photo before the timeout. Please try again.');
-    }
-    return serverError('We could not embed Identik metadata into that photo right now.');
+    console.warn('[api/v1/sign] embedIdentikMetadata failed, returning unembedded buffer', error);
+    embedResult = { buffer: workingBuffer, embedded: false, skippedReason: 'embed_failed' };
+    signedBuffer = workingBuffer;
   }
-  logSignDebug('embed_complete', { durationMs: Math.round(performance.now() - embedStart) });
 
   const summary = {
     identik_name: identikName,
@@ -225,7 +230,9 @@ export async function POST(request: NextRequest) {
     fingerprint: payloadHash,
     signature,
     mimeType,
-    watermark_applied: shouldWatermark
+    watermark_applied: shouldWatermark,
+    metadata_embedded: embedResult?.embedded ?? false,
+    metadata_embed_skipped_reason: embedResult?.skippedReason ?? null
   };
 
   const responseBody = new Uint8Array(signedBuffer);

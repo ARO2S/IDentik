@@ -1,4 +1,4 @@
-import { ExifTool } from 'exiftool-vendored';
+import { ExifTool } from '@photostructure/exiftool-vendored.alpine';
 import type { Logger } from 'batch-cluster';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
@@ -7,6 +7,7 @@ import path from 'path';
 import type { CanonicalPayload } from '@identik/crypto-utils';
 
 const IDENTIK_EXIF_TAG = 'XMP-dc:Description';
+const EMBED_METADATA_ENABLED = process.env.EMBED_METADATA !== 'false';
 const SIGN_DEBUG_ENABLED = process.env.SIGN_DEBUG === 'true';
 const parsePositiveNumber = (value: string | undefined, fallback: number) => {
   const parsed = Number(value);
@@ -177,10 +178,21 @@ const cleanupTempDir = async (dir: string) => {
   await fs.rm(dir, { recursive: true, force: true });
 };
 
+export interface EmbedResult {
+  buffer: Buffer;
+  embedded: boolean;
+  skippedReason?: string;
+}
+
 export const embedIdentikMetadata = async (
   buffer: Buffer,
   payload: IdentikEmbeddedMetadata
-): Promise<Buffer> => {
+): Promise<EmbedResult> => {
+  if (!EMBED_METADATA_ENABLED) {
+    logMetadataDebug('embed_skipped', { reason: 'disabled_via_env' });
+    return { buffer, embedded: false, skippedReason: 'disabled_via_env' };
+  }
+
   const { dir, filePath } = await writeTempFile(buffer);
   const tempFileLabel = path.basename(filePath);
   try {
@@ -202,7 +214,18 @@ export const embedIdentikMetadata = async (
     });
     const result = await fs.readFile(filePath);
     logMetadataDebug('embed_temp_file_read', { tempFile: tempFileLabel, bytes: result.length });
-    return result;
+    return { buffer: result, embedded: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const perlMissing =
+      message.toLowerCase().includes('perl must be installed') ||
+      message.toLowerCase().includes('cannot find perl') ||
+      message.toLowerCase().includes('perl not found');
+    if (perlMissing) {
+      console.warn('[metadata] Skipping embed because perl is unavailable in runtime');
+      return { buffer, embedded: false, skippedReason: 'perl_missing' };
+    }
+    throw error;
   } finally {
     await cleanupTempDir(dir);
   }
