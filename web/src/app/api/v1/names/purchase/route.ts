@@ -43,6 +43,17 @@ export async function POST(request: NextRequest) {
 
   const identikName = normalizeIdentikName(label);
 
+  const existingOwned = await db.query.domains.findFirst({
+    where: eq(schema.domains.ownerUserId, user.id)
+  });
+
+  if (existingOwned) {
+    if (existingOwned.name === identikName) {
+      return json({ identik_name: identikName, status: existingOwned.status }, { status: 200 });
+    }
+    return forbidden(`Each account can claim one Identik Name. You already have ${existingOwned.name}.`);
+  }
+
   const existing = await db.query.domains.findFirst({
     where: eq(schema.domains.name, identikName)
   });

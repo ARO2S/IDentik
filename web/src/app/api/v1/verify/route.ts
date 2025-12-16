@@ -3,6 +3,7 @@ import { badRequest, json } from '@/server/http';
 import { extractIdentikMetadata, normalizeBufferForVerification } from '@/server/metadata';
 import { fileToBuffer } from '@/server/files';
 import { fetchSignerSignals } from '@/server/signals';
+import type { DeviceMetadata } from '@/server/deviceMetadata';
 import {
   canonicalPayloadHash,
   sha256Hex,
@@ -72,6 +73,11 @@ export async function POST(request: NextRequest) {
   const { identik_stamp, canonical_payload } = embedded;
   const identikName = canonical_payload.identik_name;
   const payloadHash = canonicalPayloadHash(canonical_payload);
+  const deviceMetadata = (
+    (canonical_payload.metadata as Record<string, unknown> | undefined)?.deviceMetadata as
+      | DeviceMetadata
+      | undefined
+  ) ?? null;
 
   const checks: string[] = [];
   const warnings: string[] = [];
@@ -129,6 +135,12 @@ export async function POST(request: NextRequest) {
     checks.push('We found a matching protected photo in the Identik vault.');
   } else {
     warnings.push('We did not find a matching protected photo in the Identik vault.');
+  }
+
+  const hasPhysicalDeviceSignal =
+    deviceMetadata?.device_make || deviceMetadata?.device_model || deviceMetadata?.captured_at;
+  if (hasPhysicalDeviceSignal) {
+    checks.push('Metadata suggests this photo was captured on a physical device.');
   }
 
   const signerSignals = await fetchSignerSignals(domain.id, db);
@@ -221,6 +233,7 @@ export async function POST(request: NextRequest) {
       domain_reputation: reputation.score,
       checks,
       warnings,
+      device_metadata: deviceMetadata,
       signer_activity: signerSignals,
       domain_age_days: Math.round(domainAgeDays)
     },

@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid
 } from 'drizzle-orm/pg-core';
 
@@ -16,16 +17,24 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow()
 });
 
-export const domains = pgTable('domains', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  name: text('name').notNull().unique(),
-  ownerUserId: uuid('owner_user_id').references(() => users.id),
-  status: text('status').notNull().default('active'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-  reputationScore: numeric('reputation_score').default(sql`0.5`),
-  metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`)
-});
+export const domains = pgTable(
+  'domains',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull().unique(),
+    ownerUserId: uuid('owner_user_id').references(() => users.id),
+    status: text('status').notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    reputationScore: numeric('reputation_score').default(sql`0.5`),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`)
+  },
+  (table) => ({
+    ownerUnique: uniqueIndex('domains_owner_user_id_unique')
+      .on(table.ownerUserId)
+      .where(sql`${table.ownerUserId} IS NOT NULL`)
+  })
+);
 
 export const domainPublicKeys = pgTable('domain_public_keys', {
   id: uuid('id').defaultRandom().primaryKey(),

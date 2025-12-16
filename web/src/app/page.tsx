@@ -69,6 +69,7 @@ export default function Home() {
               <p>Sign in with your Identik account to claim the name permanently.</p>
               <ul>
                 <li>Secure Supabase Auth handles sign-in</li>
+                <li>One Identik Name per account to prevent name snatching</li>
                 <li>No wallets or seed phrases required</li>
               </ul>
             </div>

@@ -9,6 +9,7 @@ import {
   type IdentikEmbeddedMetadata,
   type IdentikStamp
 } from '@/server/metadata';
+import { extractDeviceMetadata } from '@/server/deviceMetadata';
 import { applyIdentikWatermark } from '@/server/watermark';
 import {
   canonicalPayloadHash,
@@ -20,7 +21,7 @@ import {
 import { schema } from '@identik/database';
 import { updateDomainReputation } from '@identik/reputation';
 import { fileTypeFromBuffer } from 'file-type';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { performance } from 'node:perf_hooks';
@@ -106,6 +107,7 @@ export async function POST(request: NextRequest) {
       : false;
 
   const originalBuffer = await fileToBuffer(file);
+  const deviceMetadata = extractDeviceMetadata(originalBuffer);
   const workingBuffer = shouldWatermark ? await applyIdentikWatermark(originalBuffer) : originalBuffer;
   const fileSha256 = sha256Hex(workingBuffer);
   const fileTypeInfo = await fileTypeFromBuffer(workingBuffer);
@@ -119,7 +121,8 @@ export async function POST(request: NextRequest) {
     metadata: {
       mimeType,
       originalName: safeFileName,
-      size: workingBuffer.length
+      size: workingBuffer.length,
+      ...(deviceMetadata ? { deviceMetadata } : {})
     },
     timestamp: new Date().toISOString()
   });
@@ -135,20 +138,53 @@ export async function POST(request: NextRequest) {
   });
 
   let domainKey = await db.query.domainPublicKeys.findFirst({
-    where: eq(schema.domainPublicKeys.keyFingerprint, keyFingerprint)
+    where: and(
+      eq(schema.domainPublicKeys.keyFingerprint, keyFingerprint),
+      eq(schema.domainPublicKeys.domainId, domain.id)
+    )
   });
 
   if (!domainKey) {
-    [domainKey] = await db
-      .insert(schema.domainPublicKeys)
-      .values({
-        domainId: domain.id,
-        keyType: 'ed25519',
-        publicKey: publicKeyHex,
-        keyFingerprint,
-        metadata: { source: 'dev_env' }
-      })
-      .returning();
+    const existingByFingerprint = await db.query.domainPublicKeys.findFirst({
+      where: eq(schema.domainPublicKeys.keyFingerprint, keyFingerprint)
+    });
+
+    if (existingByFingerprint && existingByFingerprint.domainId !== domain.id) {
+      return serverError(
+        'Signing key fingerprint is already bound to a different Identik Name. Please set a different DEV_SIGNING key or revoke the old one.'
+      );
+    }
+
+    if (existingByFingerprint) {
+      domainKey = existingByFingerprint;
+    } else {
+      try {
+        [domainKey] = await db
+          .insert(schema.domainPublicKeys)
+          .values({
+            domainId: domain.id,
+            keyType: 'ed25519',
+            publicKey: publicKeyHex,
+            keyFingerprint,
+            metadata: { source: 'dev_env' }
+          })
+          .returning();
+      } catch (error) {
+        // Handle race/unique constraint and fall back to the existing row.
+        const fallback = await db.query.domainPublicKeys.findFirst({
+          where: and(
+            eq(schema.domainPublicKeys.keyFingerprint, keyFingerprint),
+            eq(schema.domainPublicKeys.domainId, domain.id)
+          )
+        });
+        if (fallback) {
+          domainKey = fallback;
+        } else {
+          console.error('[api/v1/sign] failed to persist domain key', error);
+          return serverError('Could not register signing key for this Identik Name.');
+        }
+      }
+    }
   }
 
   const [media] = await db
@@ -161,7 +197,8 @@ export async function POST(request: NextRequest) {
         mimeType,
         originalName: safeFileName,
         size: workingBuffer.length,
-        watermarkApplied: shouldWatermark
+        watermarkApplied: shouldWatermark,
+        ...(deviceMetadata ? { deviceMetadata } : {})
       }
     })
     .returning();
@@ -232,7 +269,8 @@ export async function POST(request: NextRequest) {
     mimeType,
     watermark_applied: shouldWatermark,
     metadata_embedded: embedResult?.embedded ?? false,
-    metadata_embed_skipped_reason: embedResult?.skippedReason ?? null
+    metadata_embed_skipped_reason: embedResult?.skippedReason ?? null,
+    device_metadata_present: Boolean(deviceMetadata)
   };
 
   const responseBody = new Uint8Array(signedBuffer);

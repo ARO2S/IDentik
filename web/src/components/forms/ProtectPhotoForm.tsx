@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSessionContext } from '@supabase/auth-helpers-react';
 
 const statusToClass = (status: 'success' | 'error' | 'info') => {
@@ -42,6 +42,54 @@ export const ProtectPhotoForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<{ kind: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [includeWatermark, setIncludeWatermark] = useState(true);
+  const [identikName, setIdentikName] = useState('');
+  const [claimedName, setClaimedName] = useState<string | null>(null);
+  const [nameStatus, setNameStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!session?.access_token) {
+      setIdentikName('');
+      setClaimedName(null);
+      setNameStatus('idle');
+      setNameError(null);
+      return;
+    }
+
+    const loadOwnedName = async () => {
+      setNameStatus('loading');
+      setNameError(null);
+      try {
+        const res = await fetch('/api/v1/names/mine', {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          throw new Error(data?.error ?? 'Unable to load your Identik Name.');
+        }
+        const owned = data?.owned ? data.identik_name ?? '' : '';
+        setClaimedName(owned || null);
+        setIdentikName(owned);
+        setNameStatus('ready');
+      } catch (error) {
+        if (cancelled) return;
+        setClaimedName(null);
+        setNameStatus('error');
+        setNameError(error instanceof Error ? error.message : 'Unable to load your Identik Name.');
+      }
+    };
+
+    loadOwnedName();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token]);
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -49,10 +97,10 @@ export const ProtectPhotoForm = () => {
     if (!form) return;
 
     const formData = new FormData(form);
-    const identikName = formData.get('identikName')?.toString().trim();
+    const identikNameValue = identikName.trim();
     const file = fileInputRef.current?.files?.[0];
 
-    if (!identikName) {
+    if (!identikNameValue) {
       setStatus({ kind: 'error', message: 'Please enter your Identik Name.' });
       return;
     }
@@ -71,7 +119,7 @@ export const ProtectPhotoForm = () => {
     setStatus(null);
 
     try {
-      formData.set('identikName', identikName);
+      formData.set('identikName', identikNameValue);
       formData.set('watermark', includeWatermark ? 'true' : 'false');
       const response = await fetch('/api/v1/sign', {
         method: 'POST',
@@ -110,7 +158,11 @@ export const ProtectPhotoForm = () => {
             }`
           : 'All set! This photo is now protected.'
       });
-      form.reset();
+      setIdentikName(summary?.identik_name ?? identikNameValue);
+      setIncludeWatermark(true);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (error) {
       setStatus({
         kind: 'error',
@@ -124,8 +176,32 @@ export const ProtectPhotoForm = () => {
   return (
     <form ref={formRef} onSubmit={onSubmit} aria-label="Protect a photo">
       <div>
-        <label htmlFor="protect-identik-name">Your Identik Name</label>
-        <input id="protect-identik-name" name="identikName" type="text" placeholder="jenny.identik" />
+        <label htmlFor="protect-identik-name">
+          Your Identik Name{' '}
+          {claimedName && (
+            <span className="status-pill success" style={{ marginLeft: '0.35rem' }}>
+              Claimed
+            </span>
+          )}
+        </label>
+        <input
+          id="protect-identik-name"
+          name="identikName"
+          type="text"
+          placeholder="jenny.identik"
+          value={identikName}
+          onChange={(event) => setIdentikName(event.target.value)}
+          readOnly={Boolean(claimedName)}
+        />
+        {nameStatus === 'loading' && session && <p className="form-helper">Loading your Identik Name…</p>}
+        {nameStatus === 'error' && (
+          <div className="status-banner status-danger" role="status">
+            {nameError}
+          </div>
+        )}
+        {claimedName && (
+          <p className="form-helper">Auto-filled from your account. Each account uses one Identik Name.</p>
+        )}
       </div>
       <div>
         <label htmlFor="protect-file">Photo to protect</label>
