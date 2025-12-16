@@ -31,13 +31,13 @@ const messageForLabel = (
 ) => {
   switch (label) {
     case 'Trusted':
-      return `This photo was signed by ${identikName ?? 'an Identik Name'} and looks authentic based on our checks.`;
+      return `This photo or video was signed by ${identikName ?? 'an Identik Name'} and looks authentic based on our checks.`;
     case 'Limited history':
       return `We found an Identik stamp from ${identikName ?? 'this Name'}, but it’s still building history.`;
     case 'Warning':
       return `We found an Identik stamp from ${identikName ?? 'this Name'}, but something looked unusual.`;
     default:
-      return "We couldn't verify Identik protection on this photo.";
+      return "We couldn't verify Identik protection on this photo or video.";
   }
 };
 
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
   const file = formData.get('file');
 
   if (!(file instanceof File)) {
-    return badRequest('Please upload the photo you want to check.');
+    return badRequest('Please upload the photo or video you want to check.');
   }
 
   const buffer = await fileToBuffer(file);
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       score: 0,
       identik_name: null,
       label: 'Not protected',
-      message: "We couldn't find an Identik protection stamp on this photo.",
+      message: "We couldn't find an Identik protection stamp on this photo or video.",
       details: {
         domain_reputation: null,
         checks: [],
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
   if (!isExactFileMatch) {
     warnings.push('The file contents have changed since it was protected.');
   } else {
-    checks.push('Photo data matches the protected version.');
+    checks.push('Media data matches the protected version.');
   }
 
   const domain = await db.query.domains.findFirst({
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       score: 0.1,
       identik_name: identikName,
       label: 'Not protected',
-      message: 'The Identik Name referenced in this photo is not active.',
+      message: 'The Identik Name referenced in this photo or video is not active.',
       details: {
         domain_reputation: null,
         checks,
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
   if (domainKey && !domainKey.revoked && domainKey.domainId === domain.id) {
     signatureValid = await verifyPayload(payloadHash, identik_stamp.signature, domainKey.publicKey);
   } else {
-    warnings.push('The signing key referenced in the photo is not active for this Identik Name.');
+    warnings.push('The signing key referenced in this file is not active for this Identik Name.');
   }
 
   if (signatureValid) {
@@ -132,22 +132,22 @@ export async function POST(request: NextRequest) {
   });
 
   if (media) {
-    checks.push('We found a matching protected photo in the Identik vault.');
+    checks.push('We found a matching protected media item in the Identik vault.');
   } else {
-    warnings.push('We did not find a matching protected photo in the Identik vault.');
+    warnings.push('We did not find a matching protected media item in the Identik vault.');
   }
 
   const hasPhysicalDeviceSignal =
     deviceMetadata?.device_make || deviceMetadata?.device_model || deviceMetadata?.captured_at;
   if (hasPhysicalDeviceSignal) {
-    checks.push('Metadata suggests this photo was captured on a physical device.');
+    checks.push('Metadata suggests this photo or video was captured on a physical device.');
   }
 
   const signerSignals = await fetchSignerSignals(domain.id, db);
 
   if (signerSignals.totalSigned > 0) {
     checks.push(
-      `This Identik Name has protected ${signerSignals.totalSigned} photo${
+      `This Identik Name has protected ${signerSignals.totalSigned} media item${
         signerSignals.totalSigned === 1 ? '' : 's'
       } so far.`
     );
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
   if (signerSignals.reportCount > 0) {
     const percent = Math.round(signerSignals.reportRatio * 100);
     warnings.push(
-      `Community members flagged ${signerSignals.reportCount} photo${
+      `Community members flagged ${signerSignals.reportCount} media item${
         signerSignals.reportCount === 1 ? '' : 's'
       } (${percent}% of their signed media) from this Identik Name as suspected AI.`
     );

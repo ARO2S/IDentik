@@ -106,12 +106,12 @@ export const ProtectPhotoForm = () => {
     }
 
     if (!file) {
-      setStatus({ kind: 'error', message: 'Please choose the photo you want to protect.' });
+      setStatus({ kind: 'error', message: 'Please choose the photo or video you want to protect.' });
       return;
     }
 
     if (!session?.access_token) {
-      setStatus({ kind: 'error', message: 'Please sign in before protecting a photo.' });
+      setStatus({ kind: 'error', message: 'Please sign in before protecting a photo or video.' });
       return;
     }
 
@@ -128,8 +128,10 @@ export const ProtectPhotoForm = () => {
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Unable to protect that photo right now.' }));
-        throw new Error(error?.error ?? 'Unable to protect that photo right now.');
+        const error = await response
+          .json()
+          .catch(() => ({ error: 'Unable to protect that photo or video right now.' }));
+        throw new Error(error?.error ?? 'Unable to protect that photo or video right now.');
       }
 
       const contentDisposition = response.headers.get('content-disposition');
@@ -138,11 +140,16 @@ export const ProtectPhotoForm = () => {
       const summary = summaryHeader ? JSON.parse(summaryHeader) : null;
       const blob = await response.blob();
       const downloadUrl = URL.createObjectURL(blob);
+      const summaryMediaType = summary?.media_type ?? summary?.mediaType;
+      const defaultExt =
+        summary?.mimeType?.startsWith('video/') || summaryMediaType === 'video' ? 'mp4' : 'jpg';
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.download =
         downloadFileName ??
-        (summary?.identik_name ? `protected-${summary.identik_name}.jpg` : `protected-${Date.now()}.jpg`);
+        (summary?.identik_name
+          ? `protected-${summary.identik_name}.${defaultExt}`
+          : `protected-${Date.now()}.${defaultExt}`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -151,12 +158,12 @@ export const ProtectPhotoForm = () => {
       setStatus({
         kind: 'success',
         message: summary
-          ? `All set! This photo is now protected under ${summary.identik_name}. ${
+          ? `All set! This photo or video is now protected under ${summary.identik_name}. ${
               summary.watermark_applied
                 ? 'We added the subtle Identik watermark to your download.'
                 : 'This download keeps the original pixels untouched.'
             }`
-          : 'All set! This photo is now protected.'
+          : 'All set! This photo or video is now protected.'
       });
       setIdentikName(summary?.identik_name ?? identikNameValue);
       setIncludeWatermark(true);
@@ -166,7 +173,7 @@ export const ProtectPhotoForm = () => {
     } catch (error) {
       setStatus({
         kind: 'error',
-        message: error instanceof Error ? error.message : 'We could not protect that photo right now.'
+        message: error instanceof Error ? error.message : 'We could not protect that photo or video right now.'
       });
     } finally {
       setIsSubmitting(false);
@@ -174,7 +181,7 @@ export const ProtectPhotoForm = () => {
   };
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} aria-label="Protect a photo">
+    <form ref={formRef} onSubmit={onSubmit} aria-label="Protect a photo or video">
       <div>
         <label htmlFor="protect-identik-name">
           Your Identik Name{' '}
@@ -204,8 +211,8 @@ export const ProtectPhotoForm = () => {
         )}
       </div>
       <div>
-        <label htmlFor="protect-file">Photo to protect</label>
-        <input id="protect-file" name="file" type="file" accept="image/*" ref={fileInputRef} />
+        <label htmlFor="protect-file">Photo or video to protect</label>
+        <input id="protect-file" name="file" type="file" accept="image/*,video/*" ref={fileInputRef} />
       </div>
       <div className="watermark-toggle">
         <label htmlFor="protect-watermark" className="checkbox-row">
@@ -219,11 +226,12 @@ export const ProtectPhotoForm = () => {
           <span>Add the Identik shield watermark to this download</span>
         </label>
         <p className="form-helper">
-          Uncheck if you prefer the untouched photo. You can always rerun protect to grab the other version.
+          Uncheck if you prefer the untouched photo. Videos are always returned without a watermark. You can always rerun
+          protect to grab the other version.
         </p>
       </div>
       <button type="submit" className="primary-btn" disabled={isSubmitting}>
-        {isSubmitting ? 'Protecting…' : 'Protect this photo'}
+        {isSubmitting ? 'Protecting…' : 'Protect this photo or video'}
       </button>
       {status && (
         <div className={statusToClass(status.kind)} role="status">

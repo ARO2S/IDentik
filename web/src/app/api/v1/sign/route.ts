@@ -2,7 +2,13 @@ import { db } from '@/server/db';
 import { getAuthenticatedUser } from '@/server/auth';
 import { badRequest, forbidden, serverError, unauthorized } from '@/server/http';
 import { normalizeIdentikName, parseLabelFromName } from '@/server/names';
-import { appendSuffixToFileName, fileToBuffer, getSafeFileName } from '@/server/files';
+import {
+  appendSuffixToFileName,
+  fileToBuffer,
+  getSafeFileName,
+  probeVideoDurationSeconds,
+  sha256StreamHex
+} from '@/server/files';
 import {
   embedIdentikMetadata,
   type EmbedResult,
@@ -34,6 +40,14 @@ const EMBED_TIMEOUT_MS = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
 })();
 const EMBED_TIMEOUT_ERROR_NAME = 'IdentikEmbedTimeoutError';
+const VIDEO_MAX_BYTES = (() => {
+  const parsed = Number(process.env.VIDEO_MAX_BYTES);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 800_000_000; // ~800 MB default cap
+})();
+const VIDEO_MAX_DURATION_SEC = (() => {
+  const parsed = Number(process.env.VIDEO_MAX_DURATION_SEC);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 900; // 15 minutes default
+})();
 
 const logSignDebug = (...args: unknown[]) => {
   if (SIGN_DEBUG_ENABLED) {
@@ -72,11 +86,16 @@ export async function POST(request: NextRequest) {
   const watermarkPreference = formData.get('watermark');
 
   if (!(file instanceof File)) {
-    return badRequest('Please attach the photo you want to protect.');
+    return badRequest('Please attach the photo or video you want to protect.');
   }
 
   if (typeof identikNameInput !== 'string' || !identikNameInput.trim()) {
-    return badRequest('Please choose the Identik Name to protect this photo under.');
+    return badRequest('Please choose the Identik Name to protect this photo or video under.');
+  }
+
+  if (file.size > VIDEO_MAX_BYTES) {
+    const mb = Math.round(VIDEO_MAX_BYTES / 1_000_000);
+    return badRequest(`This file is too large to protect right now. Please keep videos under ~${mb} MB.`);
   }
 
   const identikName = normalizeIdentikName(parseLabelFromName(identikNameInput));
@@ -91,7 +110,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (domain.ownerUserId !== user.id) {
-    return forbidden('Only the owner of this Identik Name can protect photos with it.');
+    return forbidden('Only the owner of this Identik Name can protect media with it.');
   }
 
   const privateKeyHex = process.env.DEV_SIGNING_PRIVATE_KEY;
@@ -101,18 +120,29 @@ export async function POST(request: NextRequest) {
     return serverError('Signing keys are not configured.');
   }
 
+  const originalBuffer = await fileToBuffer(file);
+  const fileTypeInfo = await fileTypeFromBuffer(originalBuffer);
+  const mimeType = fileTypeInfo?.mime ?? file.type ?? 'application/octet-stream';
+  const isPhoto = mimeType.startsWith('image/');
+  const isVideo = mimeType.startsWith('video/');
   const shouldWatermark =
-    typeof watermarkPreference === 'string'
+    isPhoto && typeof watermarkPreference === 'string'
       ? ['true', '1', 'yes', 'on'].includes(watermarkPreference.toLowerCase())
       : false;
 
-  const originalBuffer = await fileToBuffer(file);
-  const deviceMetadata = extractDeviceMetadata(originalBuffer);
+  const deviceMetadata = isPhoto ? extractDeviceMetadata(originalBuffer) : null;
+
+  if (isVideo) {
+    const durationSeconds = await probeVideoDurationSeconds(file);
+    if (durationSeconds && durationSeconds > VIDEO_MAX_DURATION_SEC) {
+      return badRequest(
+        `This video is too long to protect right now. Please keep videos under ${VIDEO_MAX_DURATION_SEC} seconds.`
+      );
+    }
+  }
   const workingBuffer = shouldWatermark ? await applyIdentikWatermark(originalBuffer) : originalBuffer;
-  const fileSha256 = sha256Hex(workingBuffer);
-  const fileTypeInfo = await fileTypeFromBuffer(workingBuffer);
-  const mimeType = fileTypeInfo?.mime ?? file.type ?? 'application/octet-stream';
-  const safeFileName = getSafeFileName(file, fileTypeInfo?.ext ?? 'jpg');
+  const fileSha256 = isVideo ? await sha256StreamHex(file) : sha256Hex(workingBuffer);
+  const safeFileName = getSafeFileName(file, fileTypeInfo?.ext ?? (isVideo ? 'mp4' : 'jpg'));
   const signedFileName = appendSuffixToFileName(safeFileName, shouldWatermark ? '-identik-wm' : '-identik');
 
   const canonicalPayload = createCanonicalPayload({
@@ -120,6 +150,7 @@ export async function POST(request: NextRequest) {
     fileSha256,
     metadata: {
       mimeType,
+      mediaType: isVideo ? 'video' : 'photo',
       originalName: safeFileName,
       size: workingBuffer.length,
       ...(deviceMetadata ? { deviceMetadata } : {})
@@ -132,6 +163,7 @@ export async function POST(request: NextRequest) {
   const keyFingerprint = fingerprintPublicKey(publicKeyHex);
   logSignDebug('file_ready', {
     mimeType,
+    mediaType: isVideo ? 'video' : 'photo',
     fileSize: workingBuffer.length,
     fileSha256,
     payloadHash
@@ -195,6 +227,7 @@ export async function POST(request: NextRequest) {
       fingerprint: payloadHash,
       metadata: {
         mimeType,
+        mediaType: isVideo ? 'video' : 'photo',
         originalName: safeFileName,
         size: workingBuffer.length,
         watermarkApplied: shouldWatermark,
@@ -267,6 +300,7 @@ export async function POST(request: NextRequest) {
     fingerprint: payloadHash,
     signature,
     mimeType,
+    media_type: isVideo ? 'video' : 'photo',
     watermark_applied: shouldWatermark,
     metadata_embedded: embedResult?.embedded ?? false,
     metadata_embed_skipped_reason: embedResult?.skippedReason ?? null,

@@ -6,6 +6,7 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 const PNG_XMP_KEYWORD = 'XML:com.adobe.xmp';
 const EMBED_METADATA_ENABLED = process.env.EMBED_METADATA !== 'false';
 const SIGN_DEBUG_ENABLED = process.env.SIGN_DEBUG === 'true';
+const IDENTIK_MP4_UUID = Buffer.from('f316c0b405c14c56a5ad597240fdfd1f', 'hex');
 
 const logMetadataDebug = (...args: unknown[]) => {
   if (SIGN_DEBUG_ENABLED) {
@@ -61,6 +62,8 @@ const buildXmpPacket = (payload: IdentikEmbeddedMetadata): Buffer => {
 
 const isJpeg = (buffer: Buffer) => buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8;
 const isPng = (buffer: Buffer) => buffer.length > 8 && buffer.subarray(0, 8).equals(PNG_SIGNATURE);
+const isMp4Like = (buffer: Buffer) =>
+  buffer.length > 12 && buffer.subarray(4, 8).toString('ascii') === 'ftyp';
 
 const appendJpegXmpSegment = (jpeg: Buffer, xmpPacket: Buffer): Buffer => {
   // APP1 segment: marker FFE1, length (2 bytes, includes length bytes), followed by header + XMP.
@@ -317,6 +320,122 @@ const extractJsonFromXmp = (xmp?: Buffer | null): IdentikEmbeddedMetadata | null
   }
 };
 
+const buildIdentikMp4UuidBox = (payload: IdentikEmbeddedMetadata): Buffer => {
+  const data = Buffer.from(JSON.stringify(payload), 'utf8');
+  const size = 4 + 4 + 16 + data.length; // size + type + uuid + payload
+  const header = Buffer.alloc(4 + 4 + 16);
+  header.writeUInt32BE(size, 0);
+  header.write('uuid', 4, 'ascii');
+  IDENTIK_MP4_UUID.copy(header, 8);
+  return Buffer.concat([header, data]);
+};
+
+type Mp4BoxHandler = (ctx: {
+  type: string;
+  size: number;
+  headerSize: number;
+  uuidOffset?: number;
+  dataOffset: number;
+  dataEnd: number;
+}) => boolean | void;
+
+const walkMp4Boxes = (buffer: Buffer, onBox: Mp4BoxHandler) => {
+  let offset = 0;
+  const len = buffer.length;
+
+  while (offset + 8 <= len) {
+    const size32 = buffer.readUInt32BE(offset);
+    const type = buffer.subarray(offset + 4, offset + 8).toString('ascii');
+    let size = size32;
+    let headerSize = 8;
+
+    if (size === 1) {
+      if (offset + 16 > len) break;
+      const largeSize = Number(buffer.readBigUInt64BE(offset + 8));
+      size = largeSize;
+      headerSize = 16;
+    } else if (size === 0) {
+      size = len - offset;
+    }
+
+    if (size < headerSize || offset + size > len || size === 0) {
+      break;
+    }
+
+    const isUuid = type === 'uuid';
+    const uuidOffset = isUuid ? offset + headerSize : undefined;
+    const dataOffset = isUuid ? offset + headerSize + 16 : offset + headerSize;
+    const dataEnd = offset + size;
+    const totalHeader = isUuid ? headerSize + 16 : headerSize;
+
+    const shouldStop = onBox({
+      type,
+      size,
+      headerSize: totalHeader,
+      uuidOffset,
+      dataOffset,
+      dataEnd
+    });
+    if (shouldStop) {
+      return;
+    }
+
+    offset = dataEnd;
+  }
+};
+
+const appendIdentikMp4Box = (mp4: Buffer, payload: IdentikEmbeddedMetadata): Buffer => {
+  const box = buildIdentikMp4UuidBox(payload);
+  // Appending an unknown UUID box at the end is valid for ISO BMFF/MP4 and keeps
+  // existing structure untouched.
+  return Buffer.concat([mp4, box]);
+};
+
+const stripIdentikMp4Boxes = (mp4: Buffer): { buffer: Buffer; stripped: boolean } => {
+  if (!isMp4Like(mp4)) return { buffer: mp4, stripped: false };
+  const parts: Buffer[] = [];
+  let stripped = false;
+
+  walkMp4Boxes(mp4, ({ type, uuidOffset, dataOffset, dataEnd, headerSize }) => {
+    if (type === 'uuid' && uuidOffset !== undefined) {
+      const uuid = mp4.subarray(uuidOffset, uuidOffset + 16);
+      if (uuid.equals(IDENTIK_MP4_UUID)) {
+        stripped = true;
+        return; // skip this box
+      }
+    }
+    const boxStart = dataOffset - headerSize;
+    parts.push(mp4.subarray(boxStart, dataEnd));
+  });
+
+  const rebuilt = parts.length > 0 ? Buffer.concat(parts) : mp4;
+  return { buffer: rebuilt, stripped };
+};
+
+const extractIdentikFromMp4 = (mp4: Buffer): IdentikEmbeddedMetadata | null => {
+  if (!isMp4Like(mp4)) return null;
+  let found: IdentikEmbeddedMetadata | null = null;
+
+  walkMp4Boxes(mp4, ({ type, uuidOffset, dataOffset, dataEnd }) => {
+    if (type !== 'uuid' || uuidOffset === undefined) return;
+    const uuid = mp4.subarray(uuidOffset, uuidOffset + 16);
+    if (!uuid.equals(IDENTIK_MP4_UUID)) return;
+    const data = mp4.subarray(dataOffset, dataEnd);
+    try {
+      const parsed = JSON.parse(data.toString('utf8')) as IdentikEmbeddedMetadata;
+      if (parsed?.identik_stamp && parsed?.canonical_payload) {
+        found = parsed;
+        return true; // stop walking
+      }
+    } catch {
+      // ignore malformed content
+    }
+    return;
+  });
+
+  return found;
+};
+
 export const embedIdentikMetadata = async (
   buffer: Buffer,
   payload: IdentikEmbeddedMetadata
@@ -338,6 +457,11 @@ export const embedIdentikMetadata = async (
       logMetadataDebug('embed_png_complete', { bytes: result.length });
       return { buffer: result, embedded: true };
     }
+    if (isMp4Like(buffer)) {
+      const result = appendIdentikMp4Box(buffer, payload);
+      logMetadataDebug('embed_mp4_complete', { bytes: result.length });
+      return { buffer: result, embedded: true };
+    }
     logMetadataDebug('embed_skipped', { reason: 'unsupported_format' });
     return { buffer, embedded: false, skippedReason: 'unsupported_format' };
   } catch (error) {
@@ -347,6 +471,14 @@ export const embedIdentikMetadata = async (
 };
 
 export const extractIdentikMetadata = async (buffer: Buffer): Promise<IdentikEmbeddedMetadata | null> => {
+  if (isMp4Like(buffer)) {
+    const parsed = extractIdentikFromMp4(buffer);
+    if (!parsed) {
+      logMetadataDebug('extract_failed_parse', {});
+    }
+    return parsed;
+  }
+
   const xmp = isJpeg(buffer) ? extractXmpFromJpeg(buffer) : isPng(buffer) ? extractXmpFromPng(buffer) : null;
   const parsed = extractJsonFromXmp(xmp);
   if (!parsed && xmp) {
@@ -356,6 +488,16 @@ export const extractIdentikMetadata = async (buffer: Buffer): Promise<IdentikEmb
 };
 
 export const normalizeBufferForVerification = async (buffer: Buffer): Promise<Buffer> => {
+  if (isMp4Like(buffer)) {
+    const { buffer: stripped, stripped: didStrip } = stripIdentikMp4Boxes(buffer);
+    if (didStrip) {
+      logMetadataDebug('normalize_stripped_mp4_box', {
+        originalBytes: buffer.length,
+        strippedBytes: stripped.length
+      });
+    }
+    return stripped;
+  }
   if (isJpeg(buffer)) {
     const { buffer: stripped, stripped: didStrip } = stripIdentikXmpSegment(buffer);
     if (didStrip) {

@@ -57,7 +57,7 @@ export const CheckPhotoForm = () => {
 
     const file = fileInputRef.current?.files?.[0];
     if (!file) {
-      setError('Please select a photo to check.');
+      setError('Please select a photo or video to check.');
       return;
     }
 
@@ -73,13 +73,13 @@ export const CheckPhotoForm = () => {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data?.error ?? 'Unable to check that photo right now.');
+        throw new Error(data?.error ?? 'Unable to check that photo or video right now.');
       }
 
       setResult(data as VerifyResponse);
       formRef.current?.reset();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'We could not check that photo.');
+      setError(err instanceof Error ? err.message : 'We could not check that photo or video.');
     } finally {
       setIsChecking(false);
     }
@@ -105,7 +105,7 @@ export const CheckPhotoForm = () => {
         throw new Error(data?.error ?? 'We could not file that report.');
       }
 
-      setReportStatus('Thanks for flagging this photo. Our trust signals will reflect your report.');
+      setReportStatus('Thanks for flagging this photo or video. Our trust signals will reflect your report.');
     } catch (err) {
       setReportStatus(err instanceof Error ? err.message : 'We could not file that report.');
     } finally {
@@ -114,13 +114,13 @@ export const CheckPhotoForm = () => {
   };
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} aria-label="Check a photo">
+    <form ref={formRef} onSubmit={onSubmit} aria-label="Check a photo or video">
       <div>
-        <label htmlFor="check-file">Photo to check</label>
-        <input id="check-file" name="file" type="file" accept="image/*" ref={fileInputRef} />
+        <label htmlFor="check-file">Photo or video to check</label>
+        <input id="check-file" name="file" type="file" accept="image/*,video/*" ref={fileInputRef} />
       </div>
       <button type="submit" className="primary-btn" disabled={isChecking}>
-        {isChecking ? 'Checking…' : 'Check this photo'}
+        {isChecking ? 'Checking…' : 'Check this photo or video'}
       </button>
 
       {error && (
