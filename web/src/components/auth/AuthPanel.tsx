@@ -11,8 +11,8 @@ const statusClass = (status: 'success' | 'error') =>
 
 export const AuthPanel = () => {
   const { session, isLoading, supabaseClient } = useSessionContext();
-  const [email, setEmail] = useState('demo@identik.dev');
-  const [password, setPassword] = useState('identik-demo');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [nameStatus, setNameStatus] = useState<NameStatus>('idle');
