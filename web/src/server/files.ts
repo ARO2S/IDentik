@@ -32,14 +32,13 @@ export const probeVideoDurationSeconds = async (file: File): Promise<number | nu
       '-'
     ]);
 
+    // Discard stderr output to avoid backpressure if ffprobe logs warnings.
+    ff.stderr.resume();
+
     let stdout = '';
-    let stderr = '';
 
     ff.stdout.on('data', (data) => {
       stdout += data.toString();
-    });
-    ff.stderr.on('data', (data) => {
-      stderr += data.toString();
     });
 
     ff.on('close', () => {
