@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { spawn } from 'node:child_process';
 
 export const fileToBuffer = async (file: File): Promise<Buffer> => {
@@ -10,7 +11,9 @@ export const fileToBuffer = async (file: File): Promise<Buffer> => {
 export const sha256StreamHex = async (file: File): Promise<string> => {
   // Streaming hash prevents loading very large files entirely into memory.
   const hash = createHash('sha256');
-  const readable = Readable.fromWeb(file.stream());
+  // Cast the web stream to the node-compatible type so TypeScript knows it
+  // supports async iteration as expected by Readable.fromWeb.
+  const readable = Readable.fromWeb(file.stream() as unknown as NodeReadableStream);
   for await (const chunk of readable) {
     hash.update(chunk as Buffer);
   }
@@ -48,7 +51,7 @@ export const probeVideoDurationSeconds = async (file: File): Promise<number | nu
     ff.on('error', () => resolve(null));
 
     // Pipe the file stream into ffprobe stdin.
-    const readable = Readable.fromWeb(file.stream());
+    const readable = Readable.fromWeb(file.stream() as unknown as NodeReadableStream);
     readable.pipe(ff.stdin);
   });
 };
