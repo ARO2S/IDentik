@@ -21,15 +21,6 @@ export async function POST(request: NextRequest) {
     return badRequest('We need an email address on file before purchasing a name.');
   }
 
-  await db
-    .insert(schema.users)
-    .values({
-      id: user.id,
-      email: user.email,
-      displayName: user.email
-    })
-    .onConflictDoNothing({ target: schema.users.id });
-
   const body = await request.json().catch(() => null);
   const result = purchaseSchema.safeParse(body);
   if (!result.success) {
