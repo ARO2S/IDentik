@@ -2,9 +2,9 @@ import { config as loadEnv } from 'dotenv';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool, type PoolConfig } from 'pg';
+import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-http';
+import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import * as schema from './schema.js';
 import { getDatabaseUrl } from './env.js';
 
@@ -27,57 +27,31 @@ for (const envPath of envCandidates) {
   }
 }
 
-export type IdentikDatabase = NodePgDatabase<typeof schema>;
+export type IdentikDatabase = NeonHttpDatabase<typeof schema>;
 
 declare global {
   // eslint-disable-next-line no-var
   var __identikDb__: IdentikDatabase | undefined;
-  // eslint-disable-next-line no-var
-  var __identikPool__: Pool | undefined;
 }
 
 const globalRef = globalThis as typeof globalThis & {
   __identikDb__?: IdentikDatabase;
-  __identikPool__?: Pool;
-};
-
-const createPool = () => {
-  const config: PoolConfig = {
-    connectionString: getDatabaseUrl(),
-    max: Number(process.env.DATABASE_POOL_MAX ?? 10),
-    idleTimeoutMillis: Number(process.env.DATABASE_POOL_IDLE_TIMEOUT_MS ?? 10_000)
-  };
-
-  return new Pool(config);
 };
 
 export const getDb = (): IdentikDatabase => {
-  if (!globalRef.__identikPool__) {
-    globalRef.__identikPool__ = createPool();
-  }
-
   if (!globalRef.__identikDb__) {
-    globalRef.__identikDb__ = drizzle(globalRef.__identikPool__, { schema });
+    globalRef.__identikDb__ = drizzle(neon(getDatabaseUrl()), { schema });
   }
-
   return globalRef.__identikDb__;
 };
 
-export const closeDbPool = async (): Promise<void> => {
-  if (globalRef.__identikPool__) {
-    await globalRef.__identikPool__.end();
-  }
-
-  globalRef.__identikPool__ = undefined;
-  globalRef.__identikDb__ = undefined;
-};
+// No-op: HTTP driver has no persistent pool to close.
+export const closeDbPool = async (): Promise<void> => {};
 
 export const withDb = async <T>(handler: (db: IdentikDatabase) => Promise<T>): Promise<T> => {
-  const db = getDb();
-  return handler(db);
+  return handler(getDb());
 };
 
 export const createDbClient = getDb;
 
 export { schema };
-export * from './supabase.js';
