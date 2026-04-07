@@ -1,4 +1,4 @@
-import { createServiceSupabaseClient } from '@identik/database';
+import { auth } from '@/server/better-auth';
 import type { NextRequest } from 'next/server';
 
 export interface AuthenticatedUser {
@@ -6,27 +6,17 @@ export interface AuthenticatedUser {
   email?: string | null;
 }
 
-const supabaseAdmin = createServiceSupabaseClient();
-
-const extractBearerToken = (request: NextRequest): string | null => {
-  const authorization = request.headers.get('authorization');
-  if (!authorization) return null;
-  const [scheme, token] = authorization.split(' ');
-  if (!scheme || scheme.toLowerCase() !== 'bearer' || !token) return null;
-  return token.trim();
-};
-
 export const getAuthenticatedUser = async (request: NextRequest): Promise<AuthenticatedUser | null> => {
-  const token = extractBearerToken(request);
-  if (!token) return null;
+  const session = await auth.api.getSession({
+    headers: request.headers
+  });
 
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data?.user) {
+  if (!session?.user) {
     return null;
   }
 
   return {
-    id: data.user.id,
-    email: data.user.email
+    id: session.user.id,
+    email: session.user.email
   };
 };

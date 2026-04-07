@@ -1,7 +1,7 @@
 'use client';
 
+import { authClient } from '@/lib/auth-client';
 import { useEffect, useState } from 'react';
-import { useSessionContext } from '@supabase/auth-helpers-react';
 
 const NAME_SUFFIX = '.identik';
 
@@ -23,7 +23,8 @@ const statusToClass = (status: Banner['status']) => {
 const formatLabel = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '-');
 
 export const IdentikNameForm = ({ onClaimed }: Props) => {
-  const { session } = useSessionContext();
+  const { data: sessionData } = authClient.useSession();
+  const token = sessionData?.session?.token ?? null;
   const [name, setName] = useState('');
   const [banner, setBanner] = useState<Banner | null>(null);
   const [isChecking, setIsChecking] = useState(false);
@@ -39,7 +40,7 @@ export const IdentikNameForm = ({ onClaimed }: Props) => {
   useEffect(() => {
     let cancelled = false;
 
-    if (!session?.access_token) {
+    if (!token) {
       setOwnedName(null);
       setOwnershipStatus('idle');
       setOwnershipError(null);
@@ -51,9 +52,7 @@ export const IdentikNameForm = ({ onClaimed }: Props) => {
       setOwnershipError(null);
       try {
         const res = await fetch('/api/v1/names/mine', {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`
-          }
+          headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
@@ -75,7 +74,7 @@ export const IdentikNameForm = ({ onClaimed }: Props) => {
     return () => {
       cancelled = true;
     };
-  }, [session?.access_token]);
+  }, [token]);
 
   const checkAvailability = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -108,7 +107,7 @@ export const IdentikNameForm = ({ onClaimed }: Props) => {
       setBanner({ status: 'error', message: 'Please enter a name to activate.' });
       return;
     }
-    if (!session?.access_token) {
+    if (!token) {
       setBanner({ status: 'error', message: 'Please sign in before activating your Identik Name.' });
       return;
     }
@@ -126,7 +125,7 @@ export const IdentikNameForm = ({ onClaimed }: Props) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ name: label })
       });
@@ -165,7 +164,7 @@ export const IdentikNameForm = ({ onClaimed }: Props) => {
           aria-describedby="identik-name-help"
         />
         <small id="identik-name-help" style={{ color: 'var(--text-muted)' }}>
-          Letters, numbers, and dashes only. We’ll add {NAME_SUFFIX} for you. Each account can claim one Identik Name.
+          Letters, numbers, and dashes only. We&apos;ll add {NAME_SUFFIX} for you. Each account can claim one Identik Name.
         </small>
       </div>
 
@@ -175,7 +174,7 @@ export const IdentikNameForm = ({ onClaimed }: Props) => {
         </div>
       )}
 
-      {ownershipStatus === 'loading' && session && (
+      {ownershipStatus === 'loading' && token && (
         <div className="status-banner status-caution" role="status">
           Checking if you already claimed a name…
         </div>

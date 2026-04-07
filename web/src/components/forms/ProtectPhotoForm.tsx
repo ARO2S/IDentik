@@ -1,7 +1,7 @@
 'use client';
 
+import { authClient } from '@/lib/auth-client';
 import { useEffect, useRef, useState } from 'react';
-import { useSessionContext } from '@supabase/auth-helpers-react';
 
 const statusToClass = (status: 'success' | 'error' | 'info') => {
   if (status === 'success') return 'status-banner status-success';
@@ -36,7 +36,8 @@ const getFileNameFromContentDisposition = (headerValue: string | null): string |
 };
 
 export const ProtectPhotoForm = () => {
-  const { session } = useSessionContext();
+  const { data: sessionData } = authClient.useSession();
+  const token = sessionData?.session?.token ?? null;
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -50,7 +51,7 @@ export const ProtectPhotoForm = () => {
   useEffect(() => {
     let cancelled = false;
 
-    if (!session?.access_token) {
+    if (!token) {
       setIdentikName('');
       setClaimedName(null);
       setNameStatus('idle');
@@ -63,9 +64,7 @@ export const ProtectPhotoForm = () => {
       setNameError(null);
       try {
         const res = await fetch('/api/v1/names/mine', {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`
-          }
+          headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
@@ -89,7 +88,7 @@ export const ProtectPhotoForm = () => {
     return () => {
       cancelled = true;
     };
-  }, [session?.access_token]);
+  }, [token]);
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -110,7 +109,7 @@ export const ProtectPhotoForm = () => {
       return;
     }
 
-    if (!session?.access_token) {
+    if (!token) {
       setStatus({ kind: 'error', message: 'Please sign in before protecting a photo or video.' });
       return;
     }
@@ -123,7 +122,7 @@ export const ProtectPhotoForm = () => {
       formData.set('watermark', includeWatermark ? 'true' : 'false');
       const response = await fetch('/api/v1/sign', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData
       });
 
@@ -200,7 +199,7 @@ export const ProtectPhotoForm = () => {
           onChange={(event) => setIdentikName(event.target.value)}
           readOnly={Boolean(claimedName)}
         />
-        {nameStatus === 'loading' && session && <p className="form-helper">Loading your Identik Name…</p>}
+        {nameStatus === 'loading' && token && <p className="form-helper">Loading your Identik Name…</p>}
         {nameStatus === 'error' && (
           <div className="status-banner status-danger" role="status">
             {nameError}

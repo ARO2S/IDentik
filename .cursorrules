@@ -148,3 +148,26 @@
     - Eg: "This photo was signed by jenny.identik and looks authentic based on our checks."
     - Eg: "We found an Identik stamp from jenny.identik, but this name is new and we don’t have much history yet."
     - Eg: "We couldn’t find an Identik stamp on this photo."
+
+# Branding Rules for Identik
+
+- Use the Identik brand name in headers, navigation, and login screens.
+- Always include the fingerprint-shield logo (SVG) in the layout where appropriate.
+- Use the Identik color palette:
+  - Primary: #1A4D8F (blue), #00C2A8 (teal)
+  - Secondary: #0D1B2A, #E5E8EC, #FFFFFF
+  - Feedback: #1DBF73 (success), #F6C343 (caution), #E55353 (danger)
+
+- All web and mobile screens must use accessible font sizes and high contrast.
+- Avoid technical or cryptographic terminology in UI copy.
+- Use large buttons, simple flows, and short instructions intended for non-technical or older users.
+- Components must be branded:
+  - Primary buttons: Identik Blue with white text.
+  - Secondary buttons: Soft Gray with navy text.
+  - Icons should be simple, flat, and aligned with the fingerprint-shield aesthetic.
+
+- Always generate UI in a clean, minimalist style using space generously.
+- Cursor-generated SVGs must be simple, clean, and scalable.
+
+- Use the tagline below the logo on login and signup screens:
+  "Trusted identity for trusted media."
