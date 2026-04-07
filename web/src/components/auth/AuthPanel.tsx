@@ -156,7 +156,7 @@ export const AuthPanel = () => {
 
             {nameStatus === 'ready' && !ownedName && (
               <div className="auth-domain-empty">
-                <p>You haven't claimed an Identik Name yet.</p>
+                <p>You haven&apos;t claimed an Identik Name yet.</p>
                 <p className="auth-panel-footnote">
                   Claim a domain like <strong>yourname.identik</strong> before protecting photos.
                 </p>
@@ -188,7 +188,7 @@ export const AuthPanel = () => {
               placeholder="you@example.com"
               required
             />
-            <p className="input-helper">Use the email you'll verify with Identik.</p>
+            <p className="input-helper">Use the email you&apos;ll verify with Identik.</p>
           </div>
           <div>
             <label htmlFor="login-password">Password</label>
@@ -212,7 +212,7 @@ export const AuthPanel = () => {
           </div>
 
           <p className="auth-panel-footnote">
-            After signing in, you'll see whether you've already claimed an Identik Name—and if not, you can claim one in
+            After signing in, you&apos;ll see whether you&apos;ve already claimed an Identik Name—and if not, you can claim one in
             the box right away.
           </p>
         </form>
@@ -244,7 +244,7 @@ export const AuthPanel = () => {
               </button>
             </div>
             <p className="modal-subhead">
-              Reserve and purchase your Identik Name in one place. You'll use this to protect photos.
+              Reserve and purchase your Identik Name in one place. You&apos;ll use this to protect photos.
             </p>
             <IdentikNameForm onClaimed={handleClaimed} />
           </div>

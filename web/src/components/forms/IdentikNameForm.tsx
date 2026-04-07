@@ -164,7 +164,7 @@ export const IdentikNameForm = ({ onClaimed }: Props) => {
           aria-describedby="identik-name-help"
         />
         <small id="identik-name-help" style={{ color: 'var(--text-muted)' }}>
-          Letters, numbers, and dashes only. We'll add {NAME_SUFFIX} for you. Each account can claim one Identik Name.
+          Letters, numbers, and dashes only. We&apos;ll add {NAME_SUFFIX} for you. Each account can claim one Identik Name.
         </small>
       </div>
 
