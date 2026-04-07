@@ -1,6 +1,6 @@
 'use client';
 
-import { useSessionContext } from '@supabase/auth-helpers-react';
+import { authClient } from '@/lib/auth-client';
 import { useCallback, useEffect, useState } from 'react';
 import IdentikNameForm from '@/components/forms/IdentikNameForm';
 
@@ -10,7 +10,8 @@ const statusClass = (status: 'success' | 'error') =>
   status === 'success' ? 'status-banner status-success' : 'status-banner status-danger';
 
 export const AuthPanel = () => {
-  const { session, isLoading, supabaseClient } = useSessionContext();
+  const { data: sessionData, isPending } = authClient.useSession();
+  const session = sessionData ?? null;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -20,15 +21,15 @@ export const AuthPanel = () => {
   const [nameError, setNameError] = useState<string | null>(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
 
+  const token = session?.session?.token ?? null;
+
   const fetchOwnedName = useCallback(async () => {
-    if (!session?.access_token) return;
+    if (!token) return;
     setNameStatus('loading');
     setNameError(null);
     try {
       const res = await fetch('/api/v1/names/mine', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`
-        }
+        headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -41,12 +42,12 @@ export const AuthPanel = () => {
       setNameStatus('error');
       setNameError(error instanceof Error ? error.message : 'Unable to load your Identik Name.');
     }
-  }, [session?.access_token]);
+  }, [token]);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!session?.access_token) {
+    if (!token) {
       setOwnedName(null);
       setNameStatus('idle');
       setNameError(null);
@@ -63,15 +64,15 @@ export const AuthPanel = () => {
     return () => {
       cancelled = true;
     };
-  }, [session?.access_token, fetchOwnedName]);
+  }, [token, fetchOwnedName]);
 
   const signIn = async (event: React.FormEvent) => {
     event.preventDefault();
     setStatus(null);
     setIsSubmitting(true);
     try {
-      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      const { error } = await authClient.signIn.email({ email, password });
+      if (error) throw new Error(error.message);
       setStatus({ type: 'success', message: 'Signed in. You can now protect photos under your Identik Name.' });
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to sign in.' });
@@ -84,9 +85,9 @@ export const AuthPanel = () => {
     setStatus(null);
     setIsSubmitting(true);
     try {
-      const { error } = await supabaseClient.auth.signUp({ email, password });
-      if (error) throw error;
-      setStatus({ type: 'success', message: 'Check your email to verify and continue.' });
+      const { error } = await authClient.signUp.email({ email, password, name: email });
+      if (error) throw new Error(error.message);
+      setStatus({ type: 'success', message: 'Account created. Check your email to verify and continue.' });
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to register.' });
     } finally {
@@ -95,7 +96,7 @@ export const AuthPanel = () => {
   };
 
   const signOut = async () => {
-    await supabaseClient.auth.signOut();
+    await authClient.signOut();
     setStatus({ type: 'success', message: 'Signed out.' });
     setOwnedName(null);
     setNameStatus('idle');
@@ -110,7 +111,7 @@ export const AuthPanel = () => {
     setStatus({ type: 'success', message: `You now own ${name}.` });
   };
 
-  if (isLoading) {
+  if (isPending) {
     return <div className="card">Loading session…</div>;
   }
 
@@ -155,7 +156,7 @@ export const AuthPanel = () => {
 
             {nameStatus === 'ready' && !ownedName && (
               <div className="auth-domain-empty">
-                <p>You haven’t claimed an Identik Name yet.</p>
+                <p>You haven't claimed an Identik Name yet.</p>
                 <p className="auth-panel-footnote">
                   Claim a domain like <strong>yourname.identik</strong> before protecting photos.
                 </p>
@@ -187,7 +188,7 @@ export const AuthPanel = () => {
               placeholder="you@example.com"
               required
             />
-            <p className="input-helper">Use the email you’ll verify with Identik.</p>
+            <p className="input-helper">Use the email you'll verify with Identik.</p>
           </div>
           <div>
             <label htmlFor="login-password">Password</label>
@@ -211,7 +212,7 @@ export const AuthPanel = () => {
           </div>
 
           <p className="auth-panel-footnote">
-            After signing in, you’ll see whether you’ve already claimed an Identik Name—and if not, you can claim one in
+            After signing in, you'll see whether you've already claimed an Identik Name—and if not, you can claim one in
             the box right away.
           </p>
         </form>
@@ -233,12 +234,17 @@ export const AuthPanel = () => {
           >
             <div className="modal-header">
               <h4 id="claim-identik-title">Claim your Identik Name</h4>
-              <button type="button" className="modal-close" aria-label="Close claim dialog" onClick={() => setShowClaimModal(false)}>
+              <button
+                type="button"
+                className="modal-close"
+                aria-label="Close claim dialog"
+                onClick={() => setShowClaimModal(false)}
+              >
                 ×
               </button>
             </div>
             <p className="modal-subhead">
-              Reserve and purchase your Identik Name in one place. You’ll use this to protect photos.
+              Reserve and purchase your Identik Name in one place. You'll use this to protect photos.
             </p>
             <IdentikNameForm onClaimed={handleClaimed} />
           </div>
