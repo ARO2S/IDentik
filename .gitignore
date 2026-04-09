@@ -23,3 +23,4 @@ packages/database/drizzle
 .idea
 /tmp/
 tmp/
+.worktrees/
