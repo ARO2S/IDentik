@@ -59,8 +59,14 @@ export async function getOrCreateDomainKey(domainId: string): Promise<DomainKeyR
       publicKeyHex,
       keyFingerprint
     };
-  } catch {
-    // Race condition: another request inserted a key between our SELECT and INSERT.
+  } catch (err) {
+    // Only treat unique-constraint violations as an expected race condition
+    // (another request inserted a key between our SELECT and INSERT).
+    // All other errors (connectivity, config, etc.) are re-thrown immediately.
+    const isUniqueViolation =
+      typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
+    if (!isUniqueViolation) throw err;
+
     // Fall back to whatever is now in the database.
     const fallback = await db.query.domainPublicKeys.findFirst({
       where: and(
