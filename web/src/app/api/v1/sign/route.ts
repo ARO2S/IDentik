@@ -32,6 +32,19 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { performance } from 'node:perf_hooks';
 
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+  'video/mp4',
+  'video/quicktime',
+  'video/webm',
+  'video/x-msvideo'
+]);
+
 export const runtime = 'nodejs';
 
 const SIGN_DEBUG_ENABLED = process.env.SIGN_DEBUG === 'true';
@@ -122,9 +135,18 @@ export async function POST(request: NextRequest) {
 
   const originalBuffer = await fileToBuffer(file);
   const fileTypeInfo = await fileTypeFromBuffer(originalBuffer);
-  const mimeType = fileTypeInfo?.mime ?? file.type ?? 'application/octet-stream';
+  const detectedMime = fileTypeInfo?.mime ?? null;
+  // Only trust server-detected MIME; never use the browser-supplied file.type
+  // for the response header or logic decisions.
+  const mimeType = detectedMime ?? 'application/octet-stream';
   const isPhoto = mimeType.startsWith('image/');
   const isVideo = mimeType.startsWith('video/');
+
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    return badRequest(
+      'Only photos and videos can be protected. Please upload a JPEG, PNG, WebP, GIF, HEIC, MP4, MOV, or WebM file.'
+    );
+  }
   const shouldWatermark =
     isPhoto && typeof watermarkPreference === 'string'
       ? ['true', '1', 'yes', 'on'].includes(watermarkPreference.toLowerCase())
