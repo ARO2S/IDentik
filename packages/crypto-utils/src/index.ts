@@ -131,6 +131,15 @@ export const derivePublicKey = async (privateKeyHex: string): Promise<string> =>
   return bytesToHex(publicKey);
 };
 
+export const generateKeypair = async (): Promise<{ privateKeyHex: string; publicKeyHex: string }> => {
+  const privateKeyBytes = etc.randomBytes(32);
+  const publicKeyBytes = await getPublicKey(privateKeyBytes);
+  return {
+    privateKeyHex: bytesToHex(privateKeyBytes),
+    publicKeyHex: bytesToHex(publicKeyBytes)
+  };
+};
+
 export const canonicalPayloadHash = (payload: CanonicalPayload): string => {
   return fingerprintPayload(payload);
 };

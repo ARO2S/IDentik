@@ -6,6 +6,7 @@ import {
   derivePublicKey,
   fingerprintPayload,
   fingerprintPublicKey,
+  generateKeypair,
   serializeCanonicalPayload,
   signPayload,
   verifyPayload
@@ -48,5 +49,26 @@ describe('canonical payload helpers', () => {
 
     await expect(verifyPayload(payloadHash, signature, publicKeyHex)).resolves.toBe(true);
     expect(fingerprintPublicKey(publicKeyHex)).toBeTypeOf('string');
+  });
+
+  it('generates a valid Ed25519 keypair', async () => {
+    const { privateKeyHex, publicKeyHex } = await generateKeypair();
+
+    expect(privateKeyHex).toHaveLength(64); // 32 bytes → 64 hex chars
+    expect(publicKeyHex).toHaveLength(64);
+
+    // The derived public key must match
+    const derived = await derivePublicKey(privateKeyHex);
+    expect(derived).toBe(publicKeyHex);
+
+    // The keypair must produce verifiable signatures
+    const payload = createCanonicalPayload({
+      identikName: 'test.identik',
+      fileSha256: 'abc',
+      timestamp: '2026-01-01T00:00:00.000Z'
+    });
+    const hash = canonicalPayloadHash(payload);
+    const sig = await signPayload(hash, privateKeyHex);
+    await expect(verifyPayload(hash, sig, publicKeyHex)).resolves.toBe(true);
   });
 });
