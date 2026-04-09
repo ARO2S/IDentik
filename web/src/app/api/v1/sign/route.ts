@@ -177,11 +177,10 @@ export async function POST(request: NextRequest) {
 
   let domainKeyId: string;
   let privateKeyHex: string;
-  let publicKeyHex: string;
   let keyFingerprint: string;
 
   try {
-    ({ domainKeyId, privateKeyHex, publicKeyHex, keyFingerprint } =
+    ({ domainKeyId, privateKeyHex, keyFingerprint } =
       await getOrCreateDomainKey(domain.id));
   } catch (err) {
     console.error('[api/v1/sign] failed to provision domain key', err);
