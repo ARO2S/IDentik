@@ -21,3 +21,5 @@ ios
 packages/database/drizzle
 .vscode
 .idea
+/tmp/
+tmp/
