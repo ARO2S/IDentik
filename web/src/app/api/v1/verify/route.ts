@@ -49,6 +49,11 @@ export async function POST(request: NextRequest) {
     return badRequest('Please upload the photo or video you want to check.');
   }
 
+  const MAX_VERIFY_BYTES = 100 * 1024 * 1024; // 100 MB
+  if (file.size > MAX_VERIFY_BYTES) {
+    return badRequest('File is too large to verify. Maximum size is 100 MB.');
+  }
+
   const buffer = await fileToBuffer(file);
   const embedded = await extractIdentikMetadata(buffer);
 
@@ -239,9 +244,7 @@ export async function POST(request: NextRequest) {
     },
     reporting: {
       identik_name: identikName,
-      payload_hash: payloadHash,
-      media_id: media?.id ?? null,
-      domain_id: domain.id
+      payload_hash: payloadHash
     }
   });
 }
