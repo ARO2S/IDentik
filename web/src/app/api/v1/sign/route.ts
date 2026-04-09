@@ -1,5 +1,6 @@
 import { db } from '@/server/db';
 import { getAuthenticatedUser } from '@/server/auth';
+import { getOrCreateDomainKey } from '@/server/domainKeys';
 import { badRequest, forbidden, serverError, unauthorized } from '@/server/http';
 import { normalizeIdentikName, parseLabelFromName } from '@/server/names';
 import {
@@ -20,14 +21,13 @@ import { applyIdentikWatermark } from '@/server/watermark';
 import {
   canonicalPayloadHash,
   createCanonicalPayload,
-  fingerprintPublicKey,
   signPayload,
   sha256Hex
 } from '@identik/crypto-utils';
 import { schema } from '@identik/database';
 import { updateDomainReputation } from '@identik/reputation';
 import { fileTypeFromBuffer } from 'file-type';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { performance } from 'node:perf_hooks';
@@ -126,13 +126,6 @@ export async function POST(request: NextRequest) {
     return forbidden('Only the owner of this Identik Name can protect media with it.');
   }
 
-  const privateKeyHex = process.env.DEV_SIGNING_PRIVATE_KEY;
-  const publicKeyHex = process.env.DEV_SIGNING_PUBLIC_KEY;
-
-  if (!privateKeyHex || !publicKeyHex) {
-    return serverError('Signing keys are not configured.');
-  }
-
   const originalBuffer = await fileToBuffer(file);
   const fileTypeInfo = await fileTypeFromBuffer(originalBuffer);
   const detectedMime = fileTypeInfo?.mime ?? null;
@@ -181,8 +174,21 @@ export async function POST(request: NextRequest) {
   });
 
   const payloadHash = canonicalPayloadHash(canonicalPayload);
+
+  let domainKeyId: string;
+  let privateKeyHex: string;
+  let publicKeyHex: string;
+  let keyFingerprint: string;
+
+  try {
+    ({ domainKeyId, privateKeyHex, publicKeyHex, keyFingerprint } =
+      await getOrCreateDomainKey(domain.id));
+  } catch (err) {
+    console.error('[api/v1/sign] failed to provision domain key', err);
+    return serverError('Could not provision a signing key for this Identik Name.');
+  }
+
   const signature = await signPayload(payloadHash, privateKeyHex);
-  const keyFingerprint = fingerprintPublicKey(publicKeyHex);
   logSignDebug('file_ready', {
     mimeType,
     mediaType: isVideo ? 'video' : 'photo',
@@ -190,56 +196,6 @@ export async function POST(request: NextRequest) {
     fileSha256,
     payloadHash
   });
-
-  let domainKey = await db.query.domainPublicKeys.findFirst({
-    where: and(
-      eq(schema.domainPublicKeys.keyFingerprint, keyFingerprint),
-      eq(schema.domainPublicKeys.domainId, domain.id)
-    )
-  });
-
-  if (!domainKey) {
-    const existingByFingerprint = await db.query.domainPublicKeys.findFirst({
-      where: eq(schema.domainPublicKeys.keyFingerprint, keyFingerprint)
-    });
-
-    if (existingByFingerprint && existingByFingerprint.domainId !== domain.id) {
-      return serverError(
-        'Signing key fingerprint is already bound to a different Identik Name. Please set a different DEV_SIGNING key or revoke the old one.'
-      );
-    }
-
-    if (existingByFingerprint) {
-      domainKey = existingByFingerprint;
-    } else {
-      try {
-        [domainKey] = await db
-          .insert(schema.domainPublicKeys)
-          .values({
-            domainId: domain.id,
-            keyType: 'ed25519',
-            publicKey: publicKeyHex,
-            keyFingerprint,
-            metadata: { source: 'dev_env' }
-          })
-          .returning();
-      } catch (error) {
-        // Handle race/unique constraint and fall back to the existing row.
-        const fallback = await db.query.domainPublicKeys.findFirst({
-          where: and(
-            eq(schema.domainPublicKeys.keyFingerprint, keyFingerprint),
-            eq(schema.domainPublicKeys.domainId, domain.id)
-          )
-        });
-        if (fallback) {
-          domainKey = fallback;
-        } else {
-          console.error('[api/v1/sign] failed to persist domain key', error);
-          return serverError('Could not register signing key for this Identik Name.');
-        }
-      }
-    }
-  }
 
   const [media] = await db
     .insert(schema.mediaRecords)
@@ -260,7 +216,7 @@ export async function POST(request: NextRequest) {
 
   await db.insert(schema.signatures).values({
     mediaId: media.id,
-    domainPublicKeyId: domainKey.id,
+    domainPublicKeyId: domainKeyId,
     signature,
     algorithm: 'ed25519'
   });
@@ -277,7 +233,7 @@ export async function POST(request: NextRequest) {
   await updateDomainReputation(domain.id);
   logSignDebug('database_updates_complete', {
     domainId: domain.id,
-    domainKeyId: domainKey.id,
+    domainKeyId,
     mediaId: media.id
   });
 
