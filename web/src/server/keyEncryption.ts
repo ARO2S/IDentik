@@ -40,6 +40,9 @@ export function encryptPrivateKey(privateKeyHex: string): string {
 export function decryptPrivateKey(encryptedHex: string): string {
   const key = getEncryptionKey();
   const data = Buffer.from(encryptedHex, 'hex');
+  if (data.length < IV_BYTES + TAG_BYTES + 1) {
+    throw new Error('Encrypted payload is too short to be valid.');
+  }
   const iv = data.subarray(0, IV_BYTES);
   const tag = data.subarray(IV_BYTES, IV_BYTES + TAG_BYTES);
   const ciphertext = data.subarray(IV_BYTES + TAG_BYTES);
