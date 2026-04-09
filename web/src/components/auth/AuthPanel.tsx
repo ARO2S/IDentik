@@ -72,7 +72,7 @@ export const AuthPanel = () => {
     setIsSubmitting(true);
     try {
       const { error } = await authClient.signIn.email({ email, password });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(error.message || error.code || 'Unable to sign in.');
       setStatus({ type: 'success', message: 'Signed in. You can now protect photos under your Identik Name.' });
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to sign in.' });
@@ -86,7 +86,7 @@ export const AuthPanel = () => {
     setIsSubmitting(true);
     try {
       const { error } = await authClient.signUp.email({ email, password, name: email });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(error.message || error.code || 'Unable to register.');
       setStatus({ type: 'success', message: 'Account created. Check your email to verify and continue.' });
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to register.' });
