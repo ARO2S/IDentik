@@ -1,15 +1,11 @@
 import { closeDbPool, withDb, schema } from '../src/index.js';
 import { eq } from 'drizzle-orm';
-import { fingerprintPublicKey } from '@identik/crypto-utils';
+import { fingerprintPublicKey, generateKeypair } from '@identik/crypto-utils';
 
 const DEMO_EMAIL = process.env.SEED_DEMO_EMAIL ?? 'demo@identik.dev';
 const DEMO_IDENTIK_NAME = process.env.SEED_DEMO_IDENTIK_NAME ?? 'demo.identik';
-const DEV_PUBLIC_KEY = process.env.DEV_SIGNING_PUBLIC_KEY;
 
 async function seed() {
-  if (!DEV_PUBLIC_KEY) {
-    throw new Error('Set DEV_SIGNING_PUBLIC_KEY before running the seed script.');
-  }
 
   await withDb(async (db) => {
     const authUser = await db.query.user.findFirst({
@@ -22,7 +18,8 @@ async function seed() {
       );
     }
 
-    const keyFingerprint = fingerprintPublicKey(DEV_PUBLIC_KEY);
+    const { privateKeyHex: _privateKeyHex, publicKeyHex: seedPublicKey } = await generateKeypair();
+    const keyFingerprint = fingerprintPublicKey(seedPublicKey);
 
     const existingDomain = await db.query.domains.findFirst({
       where: eq(schema.domains.name, DEMO_IDENTIK_NAME)
@@ -49,7 +46,7 @@ async function seed() {
           .values({
             domainId: domain.id,
             keyType: 'ed25519',
-            publicKey: DEV_PUBLIC_KEY,
+            publicKey: seedPublicKey,
             keyFingerprint,
             metadata: { seeded: true }
           })
