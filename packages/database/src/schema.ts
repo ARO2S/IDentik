@@ -95,6 +95,8 @@ export const domainPublicKeys = pgTable('domain_public_keys', {
   keyFingerprint: text('key_fingerprint').notNull().unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   revoked: boolean('revoked').default(false),
+  keySource: text('key_source').notNull().default('server_generated'),
+  encryptedPrivateKey: text('encrypted_private_key'),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`)
 });
 
@@ -203,6 +205,7 @@ export type InsertUser = typeof user.$inferInsert;
 export type Domain = typeof domains.$inferSelect;
 export type InsertDomain = typeof domains.$inferInsert;
 export type DomainPublicKey = typeof domainPublicKeys.$inferSelect;
+export type InsertDomainPublicKey = typeof domainPublicKeys.$inferInsert;
 export type MediaRecord = typeof mediaRecords.$inferSelect;
 export type Signature = typeof signatures.$inferSelect;
 export type VerificationLog = typeof verificationLogs.$inferSelect;
