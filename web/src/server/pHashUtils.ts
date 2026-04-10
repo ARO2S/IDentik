@@ -69,7 +69,7 @@ export const computeDHash = async (buffer: Buffer): Promise<bigint> => {
     }
   }
 
-  return toSignedBigInt64(hash);
+  return toSignedBigInt64(hash & 0xFFFFFFFFFFFFFFFFn);
 };
 
 // ---------------------------------------------------------------------------
