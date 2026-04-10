@@ -18,6 +18,7 @@ import {
 } from '@/server/metadata';
 import { extractDeviceMetadata } from '@/server/deviceMetadata';
 import { applyIdentikWatermark } from '@/server/watermark';
+import { computeDHash } from '@/server/pHashUtils';
 import {
   canonicalPayloadHash,
   createCanonicalPayload,
@@ -157,6 +158,14 @@ export async function POST(request: NextRequest) {
   }
   const workingBuffer = shouldWatermark ? await applyIdentikWatermark(originalBuffer) : originalBuffer;
   const fileSha256 = isVideo ? await sha256StreamHex(file) : sha256Hex(workingBuffer);
+  let pHash: bigint | null = null;
+  if (isPhoto) {
+    try {
+      pHash = await computeDHash(workingBuffer);
+    } catch (err) {
+      console.warn('[api/v1/sign] pHash computation failed, continuing without it', err);
+    }
+  }
   const safeFileName = getSafeFileName(file, fileTypeInfo?.ext ?? (isVideo ? 'mp4' : 'jpg'));
   const signedFileName = appendSuffixToFileName(safeFileName, shouldWatermark ? '-identik-wm' : '-identik');
 
@@ -193,7 +202,8 @@ export async function POST(request: NextRequest) {
     mediaType: isVideo ? 'video' : 'photo',
     fileSize: workingBuffer.length,
     fileSha256,
-    payloadHash
+    payloadHash,
+    pHash: pHash?.toString() ?? null
   });
 
   const [media] = await db
@@ -202,6 +212,7 @@ export async function POST(request: NextRequest) {
       domainId: domain.id,
       fileSha256,
       fingerprint: payloadHash,
+      pHash,
       metadata: {
         mimeType,
         mediaType: isVideo ? 'video' : 'photo',
