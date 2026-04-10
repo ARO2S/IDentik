@@ -61,11 +61,22 @@ export async function POST(request: NextRequest) {
 
   if (!embedded) {
     // Attempt perceptual hash lookup for images (screenshots, re-compressed copies).
-    const fileTypeInfo = await fileTypeFromBuffer(buffer);
+    let fileTypeInfo: Awaited<ReturnType<typeof fileTypeFromBuffer>>;
+    try {
+      fileTypeInfo = await fileTypeFromBuffer(buffer);
+    } catch {
+      fileTypeInfo = undefined;
+    }
     const isImage = fileTypeInfo?.mime?.startsWith('image/') ?? false;
 
     if (isImage) {
-      const pHashMatch = await findPHashMatches(buffer);
+      let pHashMatch: Awaited<ReturnType<typeof findPHashMatches>>;
+      try {
+        pHashMatch = await findPHashMatches(buffer);
+      } catch (err) {
+        console.warn('[api/v1/verify] pHash lookup failed, continuing without it', err);
+        pHashMatch = null;
+      }
 
       if (pHashMatch) {
         // Look up the domain name so we can surface the signer's Identik Name.
