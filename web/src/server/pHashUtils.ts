@@ -1,4 +1,6 @@
 import sharp from 'sharp';
+import { sql } from 'drizzle-orm';
+import { db } from '@/server/db';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,6 +78,53 @@ export const computeDHash = async (buffer: Buffer): Promise<bigint> => {
 // DB lookup (implemented in Task 3)
 // ---------------------------------------------------------------------------
 
-export const findPHashMatches = async (_buffer: Buffer): Promise<PHashMatchResult | null> => {
-  throw new Error('findPHashMatches: not yet implemented');
+type RawMatchRow = {
+  id: string;
+  domain_id: string;
+  distance: number;
+};
+
+export const findPHashMatches = async (buffer: Buffer): Promise<PHashMatchResult | null> => {
+  let queryHash: bigint;
+  try {
+    queryHash = await computeDHash(buffer);
+  } catch {
+    return null;
+  }
+
+  // sql.raw is safe here: queryHash is a BigInt we computed internally,
+  // never derived from user-supplied text.
+  const hashLiteral = queryHash.toString();
+
+  const rows = await db.execute<RawMatchRow>(sql`
+    SELECT
+      id,
+      domain_id,
+      bit_count(p_hash # ${sql.raw(hashLiteral)}::bigint)::integer AS distance
+    FROM media_records
+    WHERE p_hash IS NOT NULL
+      AND bit_count(p_hash # ${sql.raw(hashLiteral)}::bigint) <= ${PHASH_MAX_DISTANCE}
+    ORDER BY distance ASC
+    LIMIT 10
+  `);
+
+  if (!rows.rows || rows.rows.length === 0) {
+    return null;
+  }
+
+  const best = rows.rows[0];
+  const tier = getTierForDistance(best.distance);
+
+  if (!tier) {
+    return null;
+  }
+
+  return {
+    mediaId: best.id,
+    domainId: best.domain_id,
+    distance: best.distance,
+    tier,
+    score: getScoreForTier(tier),
+    otherMatchCount: rows.rows.length - 1
+  };
 };
