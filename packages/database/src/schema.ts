@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   jsonb,
   numeric,
@@ -105,6 +106,7 @@ export const mediaRecords = pgTable('media_records', {
   domainId: uuid('domain_id').references(() => domains.id),
   fileSha256: text('file_sha256').notNull(),
   fingerprint: text('fingerprint').notNull(),
+  pHash: bigint('p_hash', { mode: 'bigint' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`)
 });

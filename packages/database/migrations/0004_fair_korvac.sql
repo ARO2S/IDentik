@@ -1,0 +1,1 @@
+ALTER TABLE "media_records" ADD COLUMN "p_hash" bigint;

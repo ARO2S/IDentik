@@ -29,6 +29,13 @@
       "when": 1775761465461,
       "tag": "0003_blue_norman_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775813674659,
+      "tag": "0004_fair_korvac",
+      "breakpoints": true
     }
   ]
 }
