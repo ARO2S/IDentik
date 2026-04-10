@@ -2,6 +2,8 @@ import { db } from '@/server/db';
 import { badRequest, json } from '@/server/http';
 import { extractIdentikMetadata, normalizeBufferForVerification } from '@/server/metadata';
 import { fileToBuffer } from '@/server/files';
+import { fileTypeFromBuffer } from 'file-type';
+import { findPHashMatches, getLabelForTier } from '@/server/pHashUtils';
 import { fetchSignerSignals } from '@/server/signals';
 import type { DeviceMetadata } from '@/server/deviceMetadata';
 import {
@@ -58,6 +60,41 @@ export async function POST(request: NextRequest) {
   const embedded = await extractIdentikMetadata(buffer);
 
   if (!embedded) {
+    // Attempt perceptual hash lookup for images (screenshots, re-compressed copies).
+    const fileTypeInfo = await fileTypeFromBuffer(buffer);
+    const isImage = fileTypeInfo?.mime?.startsWith('image/') ?? false;
+
+    if (isImage) {
+      const pHashMatch = await findPHashMatches(buffer);
+
+      if (pHashMatch) {
+        // Look up the domain name so we can surface the signer's Identik Name.
+        const matchDomain = await db.query.domains.findFirst({
+          where: eq(schema.domains.id, pHashMatch.domainId)
+        });
+
+        const identikName = matchDomain?.name ?? null;
+        const label = identikName
+          ? getLabelForTier(pHashMatch.tier, identikName)
+          : 'Possible visual match to protected media';
+
+        return json({
+          verified: false,
+          match_type: 'perceptual',
+          confidence: pHashMatch.tier,
+          score: pHashMatch.score,
+          identik_name: identikName,
+          label: 'Possible match',
+          message: label,
+          details: {
+            hamming_distance: pHashMatch.distance,
+            other_matches: pHashMatch.otherMatchCount
+          }
+        });
+      }
+    }
+
+    // No embedded metadata and no perceptual match found.
     return json({
       verified: false,
       score: 0,
