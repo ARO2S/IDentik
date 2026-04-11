@@ -80,6 +80,8 @@ export const VerificationEmail = ({
  * Call this from server-side code (e.g. better-auth.ts) to get the email body.
  */
 export const renderVerificationEmail = async (props: VerificationEmailProps): Promise<string> => {
+  // Throws TypeError if verificationUrl is malformed — fail loudly rather than deliver a broken link
+  new URL(props.verificationUrl);
   return render(<VerificationEmail {...props} />);
 };
 
