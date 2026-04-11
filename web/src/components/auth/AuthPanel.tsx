@@ -122,7 +122,7 @@ export const AuthPanel = () => {
     try {
       await authClient.signIn.social({ provider: 'google' });
       // Redirects to Google — page navigates away; no further state update needed on success
-    } catch (error) {
+    } catch {
       setStatus({ type: 'error', message: 'Unable to sign in with Google. Please try again.' });
       setIsSubmitting(false);
     }
