@@ -211,7 +211,7 @@ export const AuthPanel = () => {
         </div>
       ) : (
         <form className="auth-panel-form" onSubmit={signIn}>
-          <button type="button" className="google-btn" onClick={signInWithGoogle} disabled={isSubmitting}>
+          <button type="button" className="google-btn" onClick={signInWithGoogle} disabled={isSubmitting} aria-busy={isSubmitting}>
             <GoogleIcon />
             Continue with Google
           </button>
