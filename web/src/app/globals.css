@@ -679,3 +679,49 @@ textarea:focus {
   text-align: center;
   font-size: 0.95rem;
 }
+
+/* ── Auth: Google sign-in button ── */
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.75rem 1.25rem;
+  background: var(--white);
+  color: var(--text-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.google-btn:hover:not(:disabled) {
+  background: var(--soft-gray);
+  border-color: #b0bac9;
+}
+
+.google-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Auth: "or" divider ── */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  margin: 0.25rem 0;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
