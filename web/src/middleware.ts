@@ -21,8 +21,9 @@ export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const ip = getClientIp(request);
 
-  // Auth endpoints: 15 attempts per 15 minutes per IP
-  if (pathname.startsWith('/api/auth')) {
+  // Auth write endpoints (sign-in, sign-up, etc.): 15 attempts per 15 minutes per IP
+  // get-session is excluded — it is called reactively on every render and must not share this bucket
+  if (pathname.startsWith('/api/auth') && !pathname.startsWith('/api/auth/get-session')) {
     if (!isAllowed(`auth:${ip}`, 15, 15 * 60 * 1000)) {
       return rateLimitedResponse();
     }

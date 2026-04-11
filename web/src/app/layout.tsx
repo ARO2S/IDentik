@@ -11,6 +11,15 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Identik – Trusted identity for trusted media',
   description: 'Protect and verify photos with a simple Identik Name.',
+  openGraph: {
+    title: 'Identik – Trusted identity for trusted media',
+    description: 'Protect and verify photos with a simple Identik Name.',
+    images: [{ url: '/assets/OGHero.png' }]
+  },
+  twitter: {
+    card: 'summary_large_image',
+    images: ['/assets/OGHero.png']
+  },
   icons: {
     icon: [
       { url: '/assets/favicon-32.png', type: 'image/png', sizes: '32x32' },

@@ -17,10 +17,7 @@ const svgCache: { raw?: Buffer; variants: Map<number, Buffer> } = {
 const WATERMARK_COLOR = { r: 148, g: 152, b: 161 };
 const WATERMARK_LAYOUT = {
   relativeMargin: 0.022,
-  minMarginPx: 16,
-  relativeWidth: 0.12,
-  minWidthPx: 48,
-  maxWidthPx: 200,
+  relativeWidth: 0.02,
   opacity: 0.65
 };
 
@@ -56,15 +53,8 @@ export const applyIdentikWatermark = async (buffer: Buffer): Promise<Buffer> => 
     const height = metadata.height ?? 1024;
     const longestEdge = Math.max(width, height);
 
-    const margin = Math.round(
-      Math.max(longestEdge * WATERMARK_LAYOUT.relativeMargin, WATERMARK_LAYOUT.minMarginPx)
-    );
-    const overlayWidth = Math.round(
-      Math.min(
-        Math.max(width * WATERMARK_LAYOUT.relativeWidth, WATERMARK_LAYOUT.minWidthPx),
-        WATERMARK_LAYOUT.maxWidthPx
-      )
-    );
+    const margin = Math.round(longestEdge * WATERMARK_LAYOUT.relativeMargin);
+    const overlayWidth = Math.round(width * WATERMARK_LAYOUT.relativeWidth);
     const overlay = await getSizedOverlay(overlayWidth);
 
     const overlayOptions = {
