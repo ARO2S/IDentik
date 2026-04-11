@@ -24,14 +24,21 @@ export const auth = betterAuth({
   },
   emailVerification: {
     sendVerificationEmail: async ({ user, url }) => {
-      const logoUrl = `${process.env.NEXT_PUBLIC_APP_URL}/assets/identik_logo_tagline_1000x500.svg`;
-      const html = await renderVerificationEmail({ verificationUrl: url, logoUrl });
-      await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL!,
-        to: user.email,
-        subject: 'Verify your Identik email',
-        html
-      });
+      try {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://identik.dev';
+        const logoUrl = `${appUrl}/assets/identik_logo_tagline_1000x500.svg`;
+        const html = await renderVerificationEmail({ verificationUrl: url, logoUrl });
+        const { error } = await resend.emails.send({
+          from: process.env.RESEND_FROM_EMAIL!,
+          to: user.email,
+          subject: 'Verify your Identik email',
+          html
+        });
+        if (error) throw new Error(`Resend send failed: ${error.message}`);
+      } catch (err) {
+        console.error('[better-auth] sendVerificationEmail failed:', err);
+        throw err;
+      }
     }
   },
   socialProviders: {
